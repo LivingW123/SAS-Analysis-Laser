@@ -44,6 +44,11 @@ EXPERIMENTS = {
     "i_flux":     dict(train="train30k", hidden=[512, 512, 256], dropout=0.05,
                        epochs=80, lr=1e-3, batch=256, per_sample_norm=False,
                        fwd_w=1.0, l1_w=1e-2, nonneg=True, flux_w=1.0),
+    # drop forward consistency entirely: weighted MSE + L1 + flux only
+    # fwd_w=0 means the null space is controlled by MSE directly (tighter supervision)
+    "i_nofw":     dict(train="train30k", hidden=[512, 512, 256], dropout=0.05,
+                       epochs=80, lr=1e-3, batch=256, per_sample_norm=False,
+                       l1_w=1e-2, nonneg=True, flux_w=1.0),
 }
 
 EXP      = sys.argv[1]

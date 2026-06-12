@@ -9,6 +9,7 @@ Pipeline:
 Outputs: old_experiments/b_real_200.npy, old_experiments/b_real_preview.png
 """
 
+import os
 import glob
 import numpy as np
 from PIL import Image
@@ -18,7 +19,9 @@ import matplotlib.pyplot as plt
 
 TIF_DIR  = "CSU ALEPH 2025 - Liang/CSU ALEPH 2025 - Liang/SAS_B/080425"
 OUT_DIR  = "old_experiments"
+FIGS_DIR = "figures"
 N_BINS   = 200
+os.makedirs(FIGS_DIR, exist_ok=True)
 
 # ── 1. Stack TIFs ─────────────────────────────────────────────────────────────
 files = sorted(glob.glob(f"{TIF_DIR}/*.tif"))
@@ -65,5 +68,5 @@ axes[2].set_title("Rebinned to 200 bins (flux-conserving, 5.2 px/bin)")
 axes[2].set_xlabel("Bin"); axes[2].set_ylabel("Counts")
 
 plt.tight_layout()
-plt.savefig(f"{OUT_DIR}/b_real_preview.png", dpi=120)
-print(f"Saved {OUT_DIR}/b_real_preview.png")
+plt.savefig(f"{FIGS_DIR}/b_real_preview.png", dpi=120)
+print(f"Saved {FIGS_DIR}/b_real_preview.png")

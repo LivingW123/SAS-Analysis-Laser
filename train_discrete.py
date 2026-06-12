@@ -103,23 +103,15 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=TOTAL)
 
 # ── loss ───────────────────────────────────────────────────────────────────────
-_drm  = np.load("DRM.npy")
-DRM_t = torch.from_numpy((_drm / np.linalg.norm(_drm, 2)).astype(np.float32))
+_drm = np.load("DRM.npy")   # kept for test-set evaluation; not used in training loss
 
 def weighted_mse(pred, target):
-    w = torch.where(target > 0, 10.0, 1.0)
+    w = torch.where(target > 0, 3.0, 1.0)   # 10x was too aggressive for 20%-sparse data
     return (w * (pred - target) ** 2).mean()
 
 def total_loss(pred, target):
     loss = weighted_mse(pred, target)
-    # forward consistency: DRM @ pred ≈ DRM @ target
-    fp  = pred   @ DRM_t.T
-    ft  = target @ DRM_t.T
-    fwd = ((fp - ft) ** 2).sum(dim=1) / ((ft ** 2).sum(dim=1) + 1e-12)
-    loss = loss + 1.0 * fwd.mean()
-    # L1 sparsity
-    loss = loss + 1e-2 * pred.abs().mean()
-    # flux conservation (targets the ~1.5x null-space bias)
+    loss = loss + 1.0 * pred.abs().mean()   # strong L1 to enforce 80% zeros
     pred_flux = pred.sum(dim=1)
     true_flux = target.sum(dim=1)
     flux_err  = ((pred_flux - true_flux) ** 2 / (true_flux ** 2 + 1e-12)).mean()
@@ -197,8 +189,8 @@ if end_epoch >= TOTAL:
         pred = model(torch.from_numpy(Xtn)).numpy() * y_scale
     true = yt
     act  = true > 0
-    fwd_pred = pred  @ _drm
-    fwd_true = true  @ _drm
+    fwd_pred = pred  @ _drm.T
+    fwd_true = true  @ _drm.T
     frl = np.linalg.norm(fwd_pred - fwd_true, axis=1) / (
           np.linalg.norm(fwd_true, axis=1) + 1e-12)
     flux_r = fwd_pred.sum(axis=1) / (fwd_true.sum(axis=1) + 1e-12)
