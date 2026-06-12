@@ -1,1 +1,16 @@
 CSU ALEPH 2025 - Liang/
+sasdeconsoftware/
+old_experiments/
+
+# data / generated files
+*.npy
+*.xlsx
+*.png
+
+# notes
+*.txt
+*.md
+
+# python cache
+__pycache__/
+*.pyc
