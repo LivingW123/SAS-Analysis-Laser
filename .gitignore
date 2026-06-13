@@ -5,11 +5,10 @@ old_experiments/
 # data / generated files
 *.npy
 *.xlsx
-*.png
+*.keras
 
 # notes
 *.txt
-*.md
 
 # python cache
 __pycache__/
