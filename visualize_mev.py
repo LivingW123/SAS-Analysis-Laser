@@ -13,8 +13,8 @@ import numpy as np
 from data_utils import bin_drm, generate_synthetic_data, load_drm, mev_bin_centers
 
 XLSX_PATH = "200x200.xlsx"
-N_VALUES  = [10, 20, 50, 100]
-COLORS    = ["steelblue", "darkorange", "forestgreen", "crimson"]
+N_VALUES  = [10, 20, 50, 100, 200]
+COLORS    = ["steelblue", "darkorange", "forestgreen", "crimson", "purple"]
 FIGDIR    = "figures"
 
 os.makedirs(FIGDIR, exist_ok=True)
@@ -58,11 +58,12 @@ def plot_drm_overview(drm: np.ndarray) -> None:
 
 # Binned DRM
 def plot_binned_drm(drm: np.ndarray) -> None:
-    """2×2 grid: binned DRM heatmaps for each n value."""
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    """2×3 grid: binned DRM heatmaps for each n value."""
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
     fig.suptitle("Binned DRM for Each n", fontsize=13)
 
-    for ax, n, color in zip(axes.flatten(), N_VALUES, COLORS):
+    flat = axes.flatten()
+    for ax, n, color in zip(flat, N_VALUES, COLORS):
         binned = bin_drm(drm, n)
         im = ax.imshow(
             binned, aspect="auto", cmap="hot", origin="lower",
@@ -73,6 +74,7 @@ def plot_binned_drm(drm: np.ndarray) -> None:
         ax.set_title(f"n={n}  ({50/n:.1f} MeV/bin,  200×{n})")
         plt.colorbar(im, ax=ax, label="Response")
 
+    flat[-1].set_visible(False)   # hide unused 6th slot
     plt.tight_layout()
     _save("binned_drm.png")
 
@@ -209,11 +211,12 @@ def plot_final_metrics_bar(results: dict) -> None:
 # Confusion matrices
 
 def plot_confusion_matrices() -> None:
-    """2×2 grid of row-normalized confusion matrices for each n."""
-    fig, axes = plt.subplots(2, 2, figsize=(16, 13))
+    """2×3 grid of row-normalized confusion matrices for each n."""
+    fig, axes = plt.subplots(2, 3, figsize=(20, 13))
     fig.suptitle("Normalized Confusion Matrices (row = true bin)", fontsize=13)
 
-    for ax, n in zip(axes.flatten(), N_VALUES):
+    flat = axes.flatten()
+    for ax, n in zip(flat, N_VALUES):
         path = f"results_n{n}_confusion.npy"
         if not os.path.exists(path):
             ax.text(0.5, 0.5, f"Missing: {path}", ha="center", va="center",
@@ -227,7 +230,6 @@ def plot_confusion_matrices() -> None:
         im = ax.imshow(cm_norm, cmap="Blues", vmin=0, vmax=1, aspect="auto")
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-        # Show MeV labels on a sparse subset of ticks
         n_ticks  = min(n, 10)
         tick_idx = np.linspace(0, n - 1, n_ticks, dtype=int)
         centers  = mev_bin_centers(n)
@@ -237,9 +239,10 @@ def plot_confusion_matrices() -> None:
         ax.set_yticklabels([f"{centers[i]:.0f}" for i in tick_idx], fontsize=8)
         ax.set_xlabel("Predicted MeV (bin centre)")
         ax.set_ylabel("True MeV (bin centre)")
-        ax.set_title(f"n={n}  |  {50/n:.1f} MeV/bin  |  "
+        ax.set_title(f"n={n}  |  {50/n:.2f} MeV/bin  |  "
                      f"overall acc={cm.diagonal().sum()/cm.sum():.3f}")
 
+    flat[-1].set_visible(False)   # hide unused 6th slot
     plt.tight_layout()
     _save("confusion_matrices.png")
 
@@ -248,10 +251,12 @@ def plot_confusion_matrices() -> None:
 
 def plot_per_bin_efficiency() -> None:
     """Per-energy-bin recall (diagonal of confusion matrix) for each n."""
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
     fig.suptitle("Per-Bin Detection Efficiency (Recall) vs Energy", fontsize=13)
 
-    for ax, n, color in zip(axes.flatten(), N_VALUES, COLORS):
+    flat = axes.flatten()
+    flat[-1].set_visible(False)   # hide unused 6th slot
+    for ax, n, color in zip(flat, N_VALUES, COLORS):
         path = f"results_n{n}_confusion.npy"
         if not os.path.exists(path):
             ax.text(0.5, 0.5, f"Missing: {path}", ha="center", va="center",

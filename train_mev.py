@@ -2,6 +2,7 @@
 TensorFlow FC classifier for MeV energy-bin identification.
 """
 
+import csv
 import json
 import os
 
@@ -25,7 +26,7 @@ from data_utils import (
 
 #Config
 XLSX_PATH       = "200x200.xlsx"
-N_VALUES        = [10, 20, 50, 100]
+N_VALUES        = [10, 20, 50, 100, 200]
 SAMPLES_PER_BIN = 100
 MAX_EPOCHS      = 300
 BATCH_SIZE      = 32
@@ -173,6 +174,57 @@ def train_for_n(
     return results, model
 
 
+def save_csv_results(all_results: dict) -> None:
+    """Write two CSVs: a summary (one row per n) and per-epoch detail rows."""
+    # Summary: one row per n with final-epoch metrics
+    summary_path = "results_summary.csv"
+    summary_fields = [
+        "n", "mev_per_bin", "epochs_trained",
+        "val_accuracy", "macro_f1", "macro_precision", "macro_recall", "efficiency",
+    ]
+    with open(summary_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=summary_fields)
+        w.writeheader()
+        for res in all_results.values():
+            w.writerow({
+                "n":               res["n"],
+                "mev_per_bin":     res["mev_per_bin"],
+                "epochs_trained":  res["epochs_trained"],
+                "val_accuracy":    round(res["val_accuracy"][-1], 6),
+                "macro_f1":        round(res["f1"][-1], 6),
+                "macro_precision": round(res["precision"][-1], 6),
+                "macro_recall":    round(res["recall"][-1], 6),
+                "efficiency":      round(res["efficiency"][-1], 6),
+            })
+    print(f"  Saved {summary_path}")
+
+    # Per-epoch: one file per n
+    epoch_fields = [
+        "epoch", "train_loss", "val_loss",
+        "train_accuracy", "val_accuracy",
+        "precision", "recall", "f1", "efficiency",
+    ]
+    for res in all_results.values():
+        n = res["n"]
+        epoch_path = f"results_epochs_n{n}.csv"
+        with open(epoch_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=epoch_fields)
+            w.writeheader()
+            for ep in range(res["epochs_trained"]):
+                w.writerow({
+                    "epoch":          ep + 1,
+                    "train_loss":     round(res["train_loss"][ep], 6),
+                    "val_loss":       round(res["val_loss"][ep], 6),
+                    "train_accuracy": round(res["train_accuracy"][ep], 6),
+                    "val_accuracy":   round(res["val_accuracy"][ep], 6),
+                    "precision":      round(res["precision"][ep], 6),
+                    "recall":         round(res["recall"][ep], 6),
+                    "f1":             round(res["f1"][ep], 6),
+                    "efficiency":     round(res["efficiency"][ep], 6),
+                })
+        print(f"  Saved {epoch_path}")
+
+
 def print_summary_table(all_results: dict) -> None:
     print("\n" + "=" * 65)
     print(f"  {'n':>4}  {'MeV/bin':>8}  {'epochs':>7}  "
@@ -194,17 +246,32 @@ if __name__ == "__main__":
     drm = load_drm(XLSX_PATH)
     print(f"DRM loaded: shape={drm.shape}  min={drm.min():.3f}  max={drm.max():.3f}")
 
+    # Load any existing results so already-trained n values can be skipped
+    json_path = "training_results.json"
     all_results: dict = {}
+    if os.path.exists(json_path):
+        with open(json_path) as f:
+            all_results = json.load(f)
 
     for n in N_VALUES:
+        model_path = f"model_mev_n{n}.keras"
+        if os.path.exists(model_path) and str(n) in all_results:
+            print(f"\n  n={n}: {model_path} exists — skipping training.")
+            continue
         results, model = train_for_n(drm, n, SAMPLES_PER_BIN, rng)
         all_results[str(n)] = results
-        model.save(f"model_mev_n{n}.keras")
-        print(f"  Saved model_mev_n{n}.keras")
+        model.save(model_path)
+        # Persist after each n so a crash mid-run doesn't lose earlier work
+        with open(json_path, "w") as f:
+            json.dump(all_results, f, indent=2)
+        print(f"  Saved {model_path}")
 
     print_summary_table(all_results)
 
-    with open("training_results.json", "w") as f:
+    with open(json_path, "w") as f:
         json.dump(all_results, f, indent=2)
-    print("\nAll results saved to training_results.json")
+    print(f"\nJSON saved to {json_path}")
+
+    print("\nSaving CSVs...")
+    save_csv_results(all_results)
     print("Run visualize_mev.py to generate all figures.")
