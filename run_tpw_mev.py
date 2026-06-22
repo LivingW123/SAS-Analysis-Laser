@@ -196,14 +196,20 @@ def predict(
     signal: np.ndarray,
     models: dict[int, tuple[tf.keras.Model, np.ndarray, np.ndarray]],
     top_k: int = 3,
-) -> list[dict]:
-    rows = []
+) -> tuple[list[dict], list[dict]]:
+    """
+    Returns:
+        top_rows    — top-k rows (shot, n_bins, rank, energy range, confidence)
+        spectrum_rows — one row per model with full softmax probability vector
+    """
+    top_rows: list[dict] = []
+    spectrum_rows: list[dict] = []
     for n, (model, mean, std) in sorted(models.items()):
         x = ((signal - mean) / std).reshape(1, -1)
         probs = model.predict(x, verbose=0)[0]
         edges = mev_bin_edges(n)
         for rank, b in enumerate(np.argsort(probs)[::-1][:top_k], 1):
-            rows.append({
+            top_rows.append({
                 "n_bins":        n,
                 "mev_per_bin":   round(50.0 / n, 4),
                 "rank":          rank,
@@ -212,7 +218,12 @@ def predict(
                 "energy_hi_mev": round(float(edges[b + 1]), 4),
                 "confidence":    round(float(probs[b]),     6),
             })
-    return rows
+        # Full spectrum: one row, bin_0..bin_{n-1} as separate columns
+        spec = {"n_bins": n, "mev_per_bin": round(50.0 / n, 4)}
+        for i, p in enumerate(probs):
+            spec[f"bin_{i:03d}_{edges[i]:.2f}_{edges[i+1]:.2f}mev"] = round(float(p), 8)
+        spectrum_rows.append(spec)
+    return top_rows, spectrum_rows
 
 
 # ── main ───────────────────────────────────────────────────────────────────
@@ -236,6 +247,7 @@ def main() -> None:
         "pred_bin", "energy_lo_mev", "energy_hi_mev", "confidence",
     ]
     output_rows: list[dict] = []
+    spectrum_rows: list[dict] = []
     errors: list[str] = []
 
     print("Step 3 — Running inference …")
@@ -251,17 +263,22 @@ def main() -> None:
                 arr = np.clip(arr - dark_arr, 0.0, None)
 
             signal = extract_spectrum(arr, n_channels=200)
-            rows   = predict(signal, models)
+            top_rows, spec_rows = predict(signal, models)
 
-            for r in rows:
+            for r in top_rows:
                 r["shot"]       = name
                 r["source_zip"] = zname
                 output_rows.append(r)
 
-            top_conf = max(r["confidence"] for r in rows if r["rank"] == 1)
-            top_n    = next(r["n_bins"]    for r in rows if r["rank"] == 1 and r["confidence"] == top_conf)
-            top_lo   = next(r["energy_lo_mev"] for r in rows if r["rank"] == 1 and r["n_bins"] == top_n)
-            top_hi   = next(r["energy_hi_mev"] for r in rows if r["rank"] == 1 and r["n_bins"] == top_n)
+            for r in spec_rows:
+                r["shot"]       = name
+                r["source_zip"] = zname
+                spectrum_rows.append(r)
+
+            top_conf = max(r["confidence"] for r in top_rows if r["rank"] == 1)
+            top_n    = next(r["n_bins"]    for r in top_rows if r["rank"] == 1 and r["confidence"] == top_conf)
+            top_lo   = next(r["energy_lo_mev"] for r in top_rows if r["rank"] == 1 and r["n_bins"] == top_n)
+            top_hi   = next(r["energy_hi_mev"] for r in top_rows if r["rank"] == 1 and r["n_bins"] == top_n)
             print(f"  {name:40s}  best n={top_n:3d}  "
                   f"{top_lo:.1f}–{top_hi:.1f} MeV  conf={top_conf:.3f}")
 
@@ -273,6 +290,21 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(output_rows)
+
+    # ── full spectrum CSVs (one file per model, one row per shot) ────────────
+    for n in N_VALUES:
+        rows_n = [r for r in spectrum_rows if r["n_bins"] == n]
+        if not rows_n:
+            continue
+        spec_fields = ["shot", "source_zip", "n_bins", "mev_per_bin"] + [
+            k for k in rows_n[0] if k.startswith("bin_")
+        ]
+        spec_path = ROOT / f"tpw_spectra_n{n}.csv"
+        with open(spec_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=spec_fields)
+            w.writeheader()
+            w.writerows(rows_n)
+        print(f"  Spectra n={n:<3}: {spec_path.name}  ({len(rows_n)} shots × {n} bins)")
 
     # ── accuracy summary ───────────────────────────────────────────────────
     rank1 = [r for r in output_rows if r["rank"] == 1]
@@ -314,6 +346,7 @@ def main() -> None:
     print(f"  Results : {OUT_CSV}  ({len(output_rows)} rows)")
     print(f"  Accuracy: {ACC_CSV}")
     print(f"  Shots   : {len(shots)} SAS shots × {len(models)} models × 3 ranks")
+    print(f"  Spectra : tpw_spectra_n{{10,20,50,100,200}}.csv")
     if errors:
         print(f"  Errors  : {len(errors)}")
         for e in errors:
