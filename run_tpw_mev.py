@@ -25,7 +25,11 @@ TPW       = ROOT / "TPW"
 OUTDIR    = TPW / "extracted"
 JSON_PATH = ROOT / "training_results.json"
 OUT_CSV   = ROOT / "tpw_mev_results.csv"
+ACC_CSV   = ROOT / "tpw_model_accuracy.csv"
 N_VALUES  = [10, 20, 50, 100, 200]
+
+# Only process SAS camera image archives — not imaging-plate (ip) scanners
+SAS_ZIPS = {"tpw18sas.zip", "tpw22sas.zip", "TPW_2017.zip"}
 
 
 # ── file classification ────────────────────────────────────────────────────
@@ -131,6 +135,9 @@ def extract_zips() -> tuple[dict[str, tuple[str, bytes]], dict[str, bytes]]:
 
     for zname in sorted(os.listdir(TPW)):
         if not zname.endswith(".zip"):
+            continue
+        if zname not in SAS_ZIPS:
+            print(f"  Skipping   {zname}  (not SAS camera)")
             continue
         zpath = TPW / zname
         print(f"  Extracting {zname} …")
@@ -267,12 +274,48 @@ def main() -> None:
         w.writeheader()
         w.writerows(output_rows)
 
+    # ── accuracy summary ───────────────────────────────────────────────────
+    rank1 = [r for r in output_rows if r["rank"] == 1]
+    acc_fields = [
+        "n_bins", "mev_per_bin", "shots",
+        "mean_confidence", "median_confidence", "std_confidence",
+        "pct_above_99", "pct_above_90", "min_confidence",
+    ]
+    acc_rows = []
+    print("\n  Per-model confidence (rank-1, SAS shots only):")
+    print(f"  {'n_bins':>6}  {'MeV/bin':>8}  {'shots':>6}  "
+          f"{'mean':>7}  {'median':>7}  {'>99%':>6}  {'min':>6}")
+    for n in N_VALUES:
+        confs = np.array([r["confidence"] for r in rank1 if r["n_bins"] == n])
+        if len(confs) == 0:
+            continue
+        row = {
+            "n_bins":            n,
+            "mev_per_bin":       round(50.0 / n, 4),
+            "shots":             len(confs),
+            "mean_confidence":   round(float(confs.mean()),              6),
+            "median_confidence": round(float(np.median(confs)),          6),
+            "std_confidence":    round(float(confs.std()),               6),
+            "pct_above_99":      round(float((confs >= 0.99).mean()) * 100, 2),
+            "pct_above_90":      round(float((confs >= 0.90).mean()) * 100, 2),
+            "min_confidence":    round(float(confs.min()),               6),
+        }
+        acc_rows.append(row)
+        print(f"  {n:>6}  {50/n:>8.2f}  {len(confs):>6}  "
+              f"{row['mean_confidence']:>7.4f}  {row['median_confidence']:>7.4f}  "
+              f"{row['pct_above_99']:>5.1f}%  {row['min_confidence']:>6.4f}")
+
+    with open(ACC_CSV, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=acc_fields)
+        w.writeheader()
+        w.writerows(acc_rows)
+
     print(f"\n=== Done ===")
-    print(f"  Output : {OUT_CSV}")
-    print(f"  Rows   : {len(output_rows)}  "
-          f"({len(shots)} shots × {len(models)} models × 3 ranks)")
+    print(f"  Results : {OUT_CSV}  ({len(output_rows)} rows)")
+    print(f"  Accuracy: {ACC_CSV}")
+    print(f"  Shots   : {len(shots)} SAS shots × {len(models)} models × 3 ranks")
     if errors:
-        print(f"  Errors : {len(errors)}")
+        print(f"  Errors  : {len(errors)}")
         for e in errors:
             print(f"    {e}")
 
