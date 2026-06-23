@@ -14,3 +14,9 @@ TPW/
 # python cache
 __pycache__/
 *.pyc
+
+# metadata
+.DS_Store
+
+# exceptions
+!res/200x200.xlsx

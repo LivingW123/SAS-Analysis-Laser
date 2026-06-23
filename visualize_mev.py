@@ -12,7 +12,7 @@ import numpy as np
 
 from data_utils import bin_drm, generate_synthetic_data, load_drm, mev_bin_centers
 
-XLSX_PATH = "200x200.xlsx"
+XLSX_PATH = "res/200x200.xlsx"
 N_VALUES  = [10, 20, 50, 100, 200]
 COLORS    = ["steelblue", "darkorange", "forestgreen", "crimson", "purple"]
 FIGDIR    = "figures"

@@ -25,7 +25,7 @@ from data_utils import (
 )
 
 #Config
-XLSX_PATH       = "200x200.xlsx"
+XLSX_PATH       = "res/200x200.xlsx"
 N_VALUES        = [10, 20, 50, 100, 200]
 SAMPLES_PER_BIN = 100
 MAX_EPOCHS      = 300
