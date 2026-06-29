@@ -15,7 +15,7 @@ import tensorflow as tf
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-CSV_PATH    = "11733.csv"
+CSV_PATH    = "res/test_images/11733/processed/11733.csv"
 JSON_PATH   = "training_results.json"
 OUTPUT_CSV  = "inference_11733.csv"
 N_VALUES    = [10, 20, 50, 100, 200]

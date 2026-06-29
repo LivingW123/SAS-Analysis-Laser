@@ -19,4 +19,4 @@ __pycache__/
 .DS_Store
 
 # exceptions
-!res/200x200.xlsx
+!res/drm/200x200.xlsx
