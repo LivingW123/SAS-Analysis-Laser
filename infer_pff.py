@@ -123,11 +123,13 @@ if __name__ == "__main__":
     ax.set_title(f"Detector response: real vs reconstructed  (residual {100*resid_rms/signal_rms:.1f}%)")
 
     ax = axes[1]
+    bin_width = energy_bins[1] - energy_bins[0]
     brems = p_phys[0] * np.exp(-p_phys[1] * energy_bins)
-    ax.plot(energy_bins, spec_pred, "b",   lw=1.5, label="full PFF spectrum")
-    ax.plot(energy_bins, brems,     "g--", lw=1.2, label="bremsstrahlung only")
+    ax.bar(energy_bins, spec_pred, width=bin_width * 0.9,
+           color="steelblue", alpha=0.75, label="full PFF spectrum")
+    ax.plot(energy_bins, brems, "g--", lw=1.5, label="bremsstrahlung only")
     if bump_present:
-        ax.axvline(p_phys[3], color="r", ls=":", lw=1,
+        ax.axvline(p_phys[3], color="r", ls=":", lw=1.2,
                    label=f"bump centre {p_phys[3]:.1f} MeV")
     ax.set_xlabel("Energy (MeV)")
     ax.set_ylabel("Intensity (arb.)")
