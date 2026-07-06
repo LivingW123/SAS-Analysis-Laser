@@ -15,17 +15,22 @@ import pandas as pd
 # a3 (bump amplitude) bounds are for the bump-present case; set to 0 for no-bump.
 PFF_PARAM_SAMPLING = np.array([
     [200.0, 200.0, 0.1,  500.0],   # a1 — bremsstrahlung amplitude
-    [0.25,  2.0,   0.01,   5.0],   # a2 — bremsstrahlung decay rate (1/MeV)
+    [0.25,  0.2,   0.01,   1.0],   # a2 — bremsstrahlung decay rate (1/MeV)
     [8.0,   10.0,  5.0,  100.0],   # a3 — bump amplitude (bump-present lo = 5)
     [35.0,  25.0,  1.0,   49.0],   # a4 — bump centre (MeV)
     [40.0,  25.0,  5.0,  100.0],   # a5 — bump width parameter
 ])
+# a2's hi was originally 5.0 /MeV, which after binning + L1-normalization
+# collapses ~13% of "spectra" to a single near-delta bin (median a2 for
+# collapsed samples was ~3.06 vs ~1.22 overall) — not a physical spectrum
+# shape. Tightened std/hi so decay length always spans several MeV bins;
+# verified this drops >90%-single-bin-mass samples to 0% at n_bins=50.
 
 # Absolute bounds used for [0,1] normalization of parameters.
 # No-bump samples have a3=0, which maps to 0.0 after normalization.
 PFF_PARAM_BOUNDS = np.array([
     [0.1,  500.0],   # a1
-    [0.01,   5.0],   # a2
+    [0.01,   1.0],   # a2
     [0.0,  100.0],   # a3
     [1.0,   49.0],   # a4
     [5.0,  100.0],   # a5
@@ -264,6 +269,76 @@ def generate_pff_training_data(
     return X, params.astype(np.float32)
 
 
+MAX_BUMPS = 3   # multi-bump spectrum generation — see sample_multibump_spectra
+
+
+def _sample_bump_params_vec(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorised bounded-normal sampling for n (a3, a4, a5) bump triples, bump-present bounds."""
+    mu    = PFF_PARAM_SAMPLING[2:, 0]   # (3,) a3, a4, a5 means
+    sigma = PFF_PARAM_SAMPLING[2:, 1]
+    lo    = PFF_PARAM_SAMPLING[2:, 2].copy()
+    hi    = PFF_PARAM_SAMPLING[2:, 3]
+    lo[0] = 5.0   # a3 bump-present lower bound
+
+    out  = rng.normal(mu, sigma, size=(n, 3))
+    mask = (out < lo) | (out > hi)
+    while mask.any():
+        redraw = rng.normal(mu, sigma, size=(n, 3))
+        out    = np.where(mask, redraw, out)
+        mask   = (out < lo) | (out > hi)
+    return out[:, 0], out[:, 1], out[:, 2]   # a3, a4, a5
+
+
+def sample_multibump_spectra(
+    n_samples: int,
+    energy_bins: np.ndarray,
+    rng: np.random.Generator,
+    bump_fraction: float = 0.5,
+    max_bumps: int = MAX_BUMPS,
+) -> np.ndarray:
+    """
+    Sample PFF-family spectra generalised to a random number (0..max_bumps) of
+    independent Gaussian bumps on top of the bremsstrahlung term, instead of
+    always exactly 0 or 1.
+
+    Real detector shots can show multi-humped structure that the single-bump
+    PFF form (sample_pff_spectra) cannot represent — this widens the training
+    distribution's shape diversity to cover that case. Used only by
+    generate_spectrum_batch (histogram/softmax regression); the direct
+    5-parameter regressor in train_pff.py is fixed at one bump by its output
+    shape and keeps using sample_pff_spectra.
+
+    Parameters
+    ----------
+    n_samples     : total number of spectra to generate
+    energy_bins   : (M,) MeV values at which to evaluate the spectrum
+    rng           : numpy Generator
+    bump_fraction : fraction of samples that have at least one bump
+    max_bumps     : upper bound on bumps per sample when bumps are present
+
+    Returns
+    -------
+    spectra : (n_samples, M) float64
+    """
+    x = energy_bins[np.newaxis, :]   # (1, M)
+
+    # Bremsstrahlung term (a3 forced to 0 here; bumps handled separately below).
+    a1a2 = _sample_params_vec(n_samples, False, rng)   # (n_samples, 5)
+    a1, a2 = a1a2[:, 0], a1a2[:, 1]
+    spectra = a1[:, np.newaxis] * np.exp(-a2[:, np.newaxis] * x)   # (n_samples, M)
+
+    has_bump = rng.random(n_samples) < bump_fraction
+    n_bumps  = np.where(has_bump, rng.integers(1, max_bumps + 1, size=n_samples), 0)
+
+    for slot in range(max_bumps):
+        a3, a4, a5 = _sample_bump_params_vec(n_samples, rng)
+        active = slot < n_bumps
+        a3 = np.where(active, a3, 0.0)
+        spectra += a3[:, np.newaxis] * np.exp(-(x - a4[:, np.newaxis]) ** 2 / a5[:, np.newaxis])
+
+    return spectra
+
+
 def normalize_pff_params(params: np.ndarray) -> np.ndarray:
     """Scale PFF parameters to [0, 1] using PFF_PARAM_BOUNDS."""
     lo = PFF_PARAM_BOUNDS[:, 0]
@@ -285,22 +360,26 @@ def generate_spectrum_batch(
     bump_fraction: float = 0.5,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Generate (detector_response, spectrum) pairs for 50-bin spectrum regression.
+    Generate (detector_response, spectrum) pairs for spectrum regression.
+
+    Spectra are drawn from sample_multibump_spectra (0..MAX_BUMPS independent
+    Gaussian bumps), not the single-bump PFF form, so the model sees
+    multi-humped shapes closer to what real shots can show.
 
     Parameters
     ----------
-    drm_50        : (200, 50) binned DRM — call bin_drm(drm, 50) before passing in
+    drm_50        : (200, n_bins) binned DRM — call bin_drm(drm, n_bins) before passing in
     n             : number of samples
     rng           : numpy Generator
-    bump_fraction : fraction of samples that include a Gaussian bump
+    bump_fraction : fraction of samples that include at least one Gaussian bump
 
     Returns
     -------
-    X : (n, 200) float32 — L1-normalised noisy detector responses
-    y : (n, 50)  float32 — L1-normalised PFF spectra (targets)
+    X : (n, 200)     float32 — L1-normalised noisy detector responses
+    y : (n, n_bins)  float32 — L1-normalised spectra (targets)
     """
-    energy_bins = mev_bin_centers(drm_50.shape[1])          # (50,) MeV centres
-    spectra, _ = sample_pff_spectra(n, energy_bins, rng, bump_fraction)  # (n, 50)
+    energy_bins = mev_bin_centers(drm_50.shape[1])          # (n_bins,) MeV centres
+    spectra = sample_multibump_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
 
     responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
     sigma = np.sqrt(np.maximum(responses, 1e-8))
