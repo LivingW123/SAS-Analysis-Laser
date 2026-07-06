@@ -26,7 +26,7 @@ OUTDIR    = TPW / "extracted"
 JSON_PATH = ROOT / "training_results.json"
 OUT_CSV   = ROOT / "tpw_mev_results.csv"
 ACC_CSV   = ROOT / "tpw_model_accuracy.csv"
-N_VALUES  = [10, 20, 50, 100, 200]
+N_VALUES  = [50, 200]
 
 # Only process SAS camera image archives — not imaging-plate (ip) scanners
 SAS_ZIPS = {"tpw18sas.zip", "tpw22sas.zip", "TPW_2017.zip"}

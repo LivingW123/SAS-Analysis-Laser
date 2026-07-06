@@ -76,7 +76,7 @@ def mev_bin_edges(n: int) -> np.ndarray:
 
 def generate_synthetic_data(
     drm_binned: np.ndarray,
-    samples_per_bin: int = 100,
+    samples_per_bin: int = 10000,
     rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
