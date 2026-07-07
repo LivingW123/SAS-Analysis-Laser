@@ -1,8 +1,8 @@
-2026-07-06 02:01:33.024094: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-07-06 02:01:37.340133: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-07-06 14:21:56.419686: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-07-06 14:22:11.656004: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
 C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
   if not hasattr(np, "object"):
-2026-07-06 02:01:44.913169: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+2026-07-06 14:22:42.609087: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
 DRM: (200, 200)
 
@@ -51,3 +51,25 @@ Model: "spectrum_regressor_n10"
  Total params: 279,882 (1.07 MB)
  Trainable params: 277,962 (1.06 MB)
  Non-trainable params: 1,920 (7.50 KB)
+
+Generating 1,000,000 training samples...
+  Generated in 16.7s  (X: 800 MB, y: 40 MB)
+  ep   10 | loss 2.80e-05 | val_loss 6.52e-05 | val_mae 3.71e-03
+  ep   20 | loss 1.66e-05 | val_loss 2.47e-05 | val_mae 2.28e-03
+  ep   30 | loss 9.80e-06 | val_loss 1.48e-05 | val_mae 1.78e-03
+  ep   40 | loss 7.69e-06 | val_loss 8.63e-06 | val_mae 1.44e-03
+  ep   50 | loss 6.46e-06 | val_loss 5.59e-06 | val_mae 1.20e-03
+  ep   60 | loss 5.81e-06 | val_loss 7.21e-06 | val_mae 1.29e-03
+  ep   70 | loss 5.50e-06 | val_loss 6.59e-06 | val_mae 1.25e-03
+  ep   80 | loss 5.35e-06 | val_loss 5.63e-06 | val_mae 1.17e-03
+Epoch 83: early stopping
+Restoring model weights from the end of the best epoch: 53.
+
+  Stopped at epoch 83  (best: 53)
+  Training wall time : 5809.0s  (69.99s/epoch)
+  Best val_loss      : 0.000005  (MSE on L1-normed 10-bin spectrum)
+  Best val_MAE       : 0.001178
+  Saved model_spectrum_n10.keras
+
+Total wall time: 5812.2s
+Saved spectrum_training_results.json
