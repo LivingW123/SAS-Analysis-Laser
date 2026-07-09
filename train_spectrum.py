@@ -6,12 +6,11 @@ Input  : 200-channel L1 + z-score-normalised detector response
 Output : n-bin L1-normalised PFF spectrum (softmax, sums to 1), n in N_VALUES
 Loss   : MSE on L1-normalised spectrum bins
 
-Training data is generated from Mason's PFF fit form generalised to a random
-number of independent Gaussian bumps (0..MAX_BUMPS) instead of exactly 0 or 1
-(data_utils.generate_spectrum_batch / sample_multibump_spectra), since a
-single-bump PFF fit cannot represent the multi-humped structure seen in real
-shots (backup idea #1). No other synthetic-image forms (delta functions,
-bremsstrahlung-only-as-a-separate-mode, etc.) are mixed in yet.
+Training data is generated ONLY from Mason's PFF fit form — one bremsstrahlung
+exponential + one Gaussian bump (data_utils.generate_spectrum_batch /
+sample_pff_spectra), the same form used for pff_infer_11733.png /
+train_pff.py's direct 5-parameter regressor. No other synthetic-image forms
+are mixed in.
 
 Scaling behaviour (per n)
 -------------------------

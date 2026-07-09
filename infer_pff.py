@@ -15,6 +15,7 @@ Outputs
 
 import json
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,9 +23,7 @@ import pandas as pd
 import tensorflow as tf
 
 from data_utils import (
-    PFF_PARAM_BOUNDS,
     PFF_PARAM_SAMPLING,
-    denormalize_pff_params,
     load_drm,
     mev_bin_centers,
     normalize_apply,
@@ -54,8 +53,11 @@ def l1_normalise(x: np.ndarray) -> np.ndarray:
 
 
 if __name__ == "__main__":
+    csv_path = sys.argv[1] if len(sys.argv) > 1 else CSV_PATH
+    shot_name = os.path.splitext(os.path.basename(csv_path))[0]
+
     # --- load ---
-    signal = load_signal(CSV_PATH)
+    signal = load_signal(csv_path)
     drm    = load_drm(DRM_PATH)
     model  = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
@@ -64,6 +66,10 @@ if __name__ == "__main__":
 
     mean = np.array(results["norm_mean"], dtype=np.float32)
     std  = np.array(results["norm_std"],  dtype=np.float32)
+    # Denormalize using the param_bounds this model was actually trained with
+    # (stored in its own results json), not data_utils.PFF_PARAM_BOUNDS, which
+    # may have since been recalibrated for newer models (see a2 range fix).
+    param_bounds = np.array(results["param_bounds"], dtype=np.float32)
 
     # L1-normalise the real signal to match training distribution
     signal_l1 = l1_normalise(signal)
@@ -73,7 +79,7 @@ if __name__ == "__main__":
 
     # predict
     p_norm = model.predict(x_norm, verbose=0)[0]               # (5,) in [0,1]
-    p_phys = denormalize_pff_params(p_norm.reshape(1, -1))[0]  # (5,) physical units
+    p_phys = p_norm * (param_bounds[:, 1] - param_bounds[:, 0]) + param_bounds[:, 0]  # physical units
 
     # --- reconstruct: spectrum -> DRM -> L1-normalise ---
     energy_bins   = mev_bin_centers(drm.shape[1])
@@ -89,7 +95,7 @@ if __name__ == "__main__":
     mu    = PFF_PARAM_SAMPLING[:, 0]
     sig_p = PFF_PARAM_SAMPLING[:, 1]
 
-    print("\n=== PFF inference on 11733 ===")
+    print(f"\n=== PFF inference on {shot_name} ===")
     print(f"{'Param':>5}  {'Predicted':>10}  {'Train mean':>11}  "
           f"{'Norm [0,1]':>10}  {'z-score':>10}")
     for j, n in enumerate(PARAM_NAMES):
@@ -112,7 +118,7 @@ if __name__ == "__main__":
     # --- figure ---
     channels = np.arange(1, 201)
     fig, axes = plt.subplots(3, 1, figsize=(10, 9), tight_layout=True)
-    fig.suptitle("PFF inference — shot 11733", fontsize=13)
+    fig.suptitle(f"PFF inference — shot {shot_name}", fontsize=13)
 
     ax = axes[0]
     ax.plot(channels, signal_l1,    "k",   lw=1.2, label="real signal (L1-norm)")
@@ -144,5 +150,6 @@ if __name__ == "__main__":
     ax.set_title(f"Channel residual  (RMS={resid_rms:.6f}, "
                  f"{100*resid_rms/signal_rms:.1f}% of signal)")
 
-    fig.savefig("pff_infer_11733.png", dpi=150)
-    print("\nSaved pff_infer_11733.png")
+    out_path = f"pff_infer_{shot_name}.png"
+    fig.savefig(out_path, dpi=150)
+    print(f"\nSaved {out_path}")

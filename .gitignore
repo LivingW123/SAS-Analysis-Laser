@@ -20,3 +20,4 @@ __pycache__/
 
 # exceptions
 !res/drm/200x200.xlsx
+train_spectrum_n10_revert_singlebump.log

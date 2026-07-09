@@ -362,9 +362,9 @@ def generate_spectrum_batch(
     """
     Generate (detector_response, spectrum) pairs for spectrum regression.
 
-    Spectra are drawn from sample_multibump_spectra (0..MAX_BUMPS independent
-    Gaussian bumps), not the single-bump PFF form, so the model sees
-    multi-humped shapes closer to what real shots can show.
+    Spectra are drawn from sample_pff_spectra — the single bremsstrahlung
+    exponential + one Gaussian bump PFF form (same form used for
+    pff_infer_11733.png / train_pff.py's direct 5-parameter regressor).
 
     Parameters
     ----------
@@ -379,7 +379,7 @@ def generate_spectrum_batch(
     y : (n, n_bins)  float32 — L1-normalised spectra (targets)
     """
     energy_bins = mev_bin_centers(drm_50.shape[1])          # (n_bins,) MeV centres
-    spectra = sample_multibump_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
+    spectra, _ = sample_pff_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
 
     responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
     sigma = np.sqrt(np.maximum(responses, 1e-8))
