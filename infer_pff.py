@@ -25,6 +25,7 @@ import tensorflow as tf
 from data_utils import (
     PFF_PARAM_SAMPLING,
     load_drm,
+    load_saturation_mask,
     mev_bin_centers,
     normalize_apply,
     pff_func,
@@ -91,6 +92,11 @@ if __name__ == "__main__":
     resid_rms  = float(np.sqrt(np.mean(residual ** 2)))
     signal_rms = float(np.sqrt(np.mean(signal_l1 ** 2)))
 
+    sat_mask = load_saturation_mask(csv_path)  # True = imputed/not a real measurement
+    unsat = ~sat_mask if sat_mask is not None else np.ones(200, dtype=bool)
+    resid_rms_unsat  = float(np.sqrt(np.mean(residual[unsat] ** 2)))
+    signal_rms_unsat = float(np.sqrt(np.mean(signal_l1[unsat] ** 2)))
+
     # --- where do predicted params fall in the training distribution? ---
     mu    = PFF_PARAM_SAMPLING[:, 0]
     sig_p = PFF_PARAM_SAMPLING[:, 1]
@@ -107,7 +113,10 @@ if __name__ == "__main__":
 
     print(f"\nResidual RMS (L1 space) : {resid_rms:.6f}")
     print(f"Signal RMS  (L1 space)  : {signal_rms:.6f}")
-    print(f"Relative residual       : {100*resid_rms/signal_rms:.1f}%")
+    print(f"Relative residual       : {100*resid_rms/signal_rms:.1f}%  (all 200 channels)")
+    if sat_mask is not None:
+        print(f"  {sat_mask.sum()}/200 channels are saturation-corrected (imputed, not real measurements)")
+        print(f"Relative residual (unsaturated only) : {100*resid_rms_unsat/signal_rms_unsat:.1f}%")
 
     bump_present = float(p_phys[2]) > 5.0
     print(f"\na3 = {p_phys[2]:.2f}  ->  bump {'DETECTED' if bump_present else 'NOT detected'}")
@@ -143,12 +152,19 @@ if __name__ == "__main__":
     ax.set_title("Predicted PFF spectrum (energy space)")
 
     ax = axes[2]
+    if sat_mask is not None and sat_mask.any():
+        edges_idx = np.flatnonzero(np.diff(np.r_[0, sat_mask.astype(int), 0]))
+        spans = edges_idx.reshape(-1, 2)
+        for k, (lo, hi) in enumerate(spans):
+            ax.axvspan(channels[lo], channels[hi - 1], color="gray", alpha=0.2,
+                       label="saturation-corrected" if k == 0 else None)
+        ax.legend()
     ax.plot(channels, residual, "m", lw=1)
     ax.axhline(0, color="k", lw=0.8, ls="--")
     ax.set_xlabel("Detector channel")
     ax.set_ylabel("Residual (real L1 - pred L1)")
-    ax.set_title(f"Channel residual  (RMS={resid_rms:.6f}, "
-                 f"{100*resid_rms/signal_rms:.1f}% of signal)")
+    ax.set_title(f"Channel residual  (RMS={resid_rms:.6f}, {100*resid_rms/signal_rms:.1f}% of signal; "
+                 f"unsaturated-only {100*resid_rms_unsat/signal_rms_unsat:.1f}%)")
 
     out_path = f"pff_infer_{shot_name}.png"
     fig.savefig(out_path, dpi=150)

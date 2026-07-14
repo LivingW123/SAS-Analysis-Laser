@@ -44,6 +44,29 @@ def load_drm(xlsx_path: str) -> np.ndarray:
     return drm.T                         # (200 det channels, 200 energy bins)
 
 
+def load_saturation_mask(corrected_csv_path: str) -> np.ndarray | None:
+    """
+    Identify which channels of a *_proc_vector_corrected.csv were altered by
+    rescale_vector.ipynb's saturation correction (Gaussian imputation of
+    oversaturated CCD pixels), by diffing against the sibling uncorrected
+    *_proc_vector.csv.
+
+    Returns a (200,) bool array (True = value was imputed / corrected, so not
+    a real measurement), or None if the uncorrected sibling file can't be
+    found (e.g. csv_path isn't a "*_corrected.csv" file, or shot doesn't have
+    an uncorrected sibling on disk).
+    """
+    if "_corrected" not in corrected_csv_path:
+        return None
+    raw_path = corrected_csv_path.replace("_corrected", "")
+    try:
+        raw = pd.read_csv(raw_path)["signal"].values.astype(np.float32)
+        corrected = pd.read_csv(corrected_csv_path)["signal"].values.astype(np.float32)
+    except FileNotFoundError:
+        return None
+    return raw != corrected
+
+
 def bin_drm(drm: np.ndarray, n: int) -> np.ndarray:
     """
     Average every (200/n) consecutive energy-bin columns.
@@ -380,6 +403,51 @@ def generate_spectrum_batch(
     """
     energy_bins = mev_bin_centers(drm_50.shape[1])          # (n_bins,) MeV centres
     spectra, _ = sample_pff_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
+
+    responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
+    sigma = np.sqrt(np.maximum(responses, 1e-8))
+    noise = rng.standard_normal(responses.shape) * sigma
+    X = np.clip(responses + noise, 0.0, None)
+
+    # L1-normalise detector responses to match inference scale
+    row_sums = X.sum(axis=1, keepdims=True)
+    X = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
+
+    # L1-normalise spectra — targets are probability distributions over energy bins
+    spec_sums = spectra.sum(axis=1, keepdims=True)
+    y = (spectra / np.maximum(spec_sums, 1e-12)).astype(np.float32)
+
+    return X, y
+
+
+def generate_multibump_spectrum_batch(
+    drm_50: np.ndarray,
+    n: int,
+    rng: np.random.Generator,
+    bump_fraction: float = 0.5,
+    max_bumps: int = MAX_BUMPS,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Same as generate_spectrum_batch, but spectra are drawn from
+    sample_multibump_spectra (0..max_bumps independent Gaussian bumps)
+    instead of the single-bump PFF form, so the model can learn to
+    represent real shots with more than one spectral feature.
+
+    Parameters
+    ----------
+    drm_50        : (200, n_bins) binned DRM — call bin_drm(drm, n_bins) before passing in
+    n             : number of samples
+    rng           : numpy Generator
+    bump_fraction : fraction of samples that include at least one bump
+    max_bumps     : upper bound on bumps per sample when bumps are present
+
+    Returns
+    -------
+    X : (n, 200)     float32 — L1-normalised noisy detector responses
+    y : (n, n_bins)  float32 — L1-normalised spectra (targets)
+    """
+    energy_bins = mev_bin_centers(drm_50.shape[1])          # (n_bins,) MeV centres
+    spectra = sample_multibump_spectra(n, energy_bins, rng, bump_fraction, max_bumps)  # (n, n_bins)
 
     responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
     sigma = np.sqrt(np.maximum(responses, 1e-8))
