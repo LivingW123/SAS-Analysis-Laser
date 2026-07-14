@@ -25,6 +25,11 @@ Outputs
       top    — real signal vs DRM-forward of CNN and dense predictions
       middle — CNN vs dense predicted spectra (bar)
       bottom — channel-wise residuals for both models
+  cnn_infer_<shot>_n<n_bins>_unsat.png : 2-panel figure per shot (only when a
+      saturation mask is available for the shot) — same detector-response and
+      residual comparison, but with saturation-corrected (imputed) channels
+      masked out, so the fit quality on real measurements is visible without
+      the imputed-channel distortion.
 """
 
 import json
@@ -167,6 +172,45 @@ def run_shot(csv_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
     out_path = f"cnn_infer_{shot_name}_n{N_BINS}{OUT_TAG}.png"
     fig.savefig(out_path, dpi=150)
     print(f"  Saved {out_path}")
+
+    # --- second figure: same two panels, saturation-corrected channels masked out ---
+    if sat_mask is not None and sat_mask.any():
+        def masked(arr: np.ndarray) -> np.ndarray:
+            out = arr.astype(np.float32).copy()
+            out[sat_mask] = np.nan
+            return out
+
+        fig2, axes2 = plt.subplots(2, 1, figsize=(10, 6.5), tight_layout=True)
+        fig2.suptitle(f"CNN vs dense — shot {shot_name}  (n_bins={N_BINS}, unsaturated channels only)",
+                      fontsize=12)
+
+        ax = axes2[0]
+        ax.plot(channels, masked(signal_l1), "k", lw=1.4, label="real signal (L1)")
+        ax.plot(channels, masked(preds["CNN 5x48"]["resp"]), "r--", lw=1.2,
+                label=f"DRM x CNN pred ({100*preds['CNN 5x48']['rms_unsat']/signal_rms_unsat:.1f}%)")
+        if has_dense:
+            ax.plot(channels, masked(preds["dense"]["resp"]), "b:", lw=1.2,
+                    label=f"DRM x dense pred ({100*preds['dense']['rms_unsat']/signal_rms_unsat:.1f}%)")
+        ax.set_xlabel("Detector channel")
+        ax.set_ylabel("Intensity (arb.)")
+        ax.legend()
+        ax.set_title("Detector response: real vs reconstructed (unsaturated channels only)")
+
+        ax = axes2[1]
+        ax.plot(channels, masked(preds["CNN 5x48"]["resid"]), "r", lw=1, label="CNN residual")
+        if has_dense:
+            ax.plot(channels, masked(preds["dense"]["resid"]), "b", lw=1, alpha=0.7, label="dense residual")
+        ax.axhline(0, color="k", lw=0.8, ls="--")
+        ax.set_xlabel("Detector channel")
+        ax.set_ylabel("Residual (real L1 - pred L1)")
+        ax.legend()
+        ax.set_title(f"Channel residuals, unsaturated only  "
+                     f"(CNN RMS={preds['CNN 5x48']['rms_unsat']:.6f}"
+                     + (f", dense RMS={preds['dense']['rms_unsat']:.6f}" if has_dense else "") + ")")
+
+        out_path_unsat = f"cnn_infer_{shot_name}_n{N_BINS}{OUT_TAG}_unsat.png"
+        fig2.savefig(out_path_unsat, dpi=150)
+        print(f"  Saved {out_path_unsat}")
 
 
 if __name__ == "__main__":

@@ -176,7 +176,15 @@ def _timed_generate(drm, n_samples, rng, bump_fraction):
     responses = (drm @ spectra.T).T
     sigma     = np.sqrt(np.maximum(responses, 1e-8))
     noise     = rng.standard_normal(responses.shape) * sigma
-    X         = np.clip(responses + noise, 0.0, None).astype(np.float32)
+    X         = np.clip(responses + noise, 0.0, None)
+    # L1-normalise each response so training and inference live on the same
+    # scale regardless of the DRM's absolute units vs the real detector's raw
+    # units (see data_utils.generate_pff_training_data — this used to skip
+    # this step, which meant norm_mean/norm_std were fit on ~1e9-1e11-scale
+    # data while infer_pff.py feeds in L1-normalised real signals at ~1e-2,
+    # collapsing every real shot to nearly the same z-scored input).
+    row_sums  = X.sum(axis=1, keepdims=True)
+    X         = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
     numpy_time = time.perf_counter() - t1
 
     return X, params.astype(np.float32), sample_time, numpy_time
