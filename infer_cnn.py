@@ -93,7 +93,7 @@ DENSE_JSON = "spectrum_training_results.json"
 N_BINS = int(
     os.environ.get(
         "CNN_NBINS",
-        10,
+        50,
     )
 )
 

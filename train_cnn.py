@@ -48,7 +48,7 @@ from data_utils import (
 # ---------------------------------------------------------------------------
 
 XLSX_PATH     = "res/drm/200x200.xlsx"
-N_VALUES      = [10]
+N_VALUES      = [50]
 N_SAMPLES     = 100_000
 BUMP_FRACTION = 0.5
 MAX_EPOCHS    = 200
