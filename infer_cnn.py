@@ -180,7 +180,7 @@ def run_shot(csv_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
             out[sat_mask] = np.nan
             return out
 
-        fig2, axes2 = plt.subplots(2, 1, figsize=(10, 6.5), tight_layout=True)
+        fig2, axes2 = plt.subplots(3, 1, figsize=(10, 9.5), tight_layout=True)
         fig2.suptitle(f"CNN vs dense — shot {shot_name}  (n_bins={N_BINS}, unsaturated channels only)",
                       fontsize=12)
 
@@ -196,7 +196,24 @@ def run_shot(csv_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
         ax.legend()
         ax.set_title("Detector response: real vs reconstructed (unsaturated channels only)")
 
+        # Predicted spectrum is already in energy space, not channel space, so it's
+        # identical to the main figure's middle panel — saturation masking doesn't apply.
         ax = axes2[1]
+        ax.stairs(preds["CNN 5x48"]["spec"], edges, color="firebrick", lw=1.8,
+                  label="CNN 5x48")
+        ax.plot(energy_bins, preds["CNN 5x48"]["spec"], "o", color="firebrick", ms=4)
+        if has_dense:
+            ax.stairs(preds["dense"]["spec"], edges, color="steelblue", lw=1.8,
+                      label="dense (model_spectrum)")
+            ax.plot(energy_bins, preds["dense"]["spec"], "s", color="steelblue", ms=4)
+        ax.set_yscale("log")
+        ax.set_xlim(0, 50)
+        ax.set_xlabel("Energy (MeV)")
+        ax.set_ylabel("Intensity (arb., log)")
+        ax.legend()
+        ax.set_title("Predicted energy spectrum over full 0-50 MeV range")
+
+        ax = axes2[2]
         ax.plot(channels, masked(preds["CNN 5x48"]["resid"]), "r", lw=1, label="CNN residual")
         if has_dense:
             ax.plot(channels, masked(preds["dense"]["resid"]), "b", lw=1, alpha=0.7, label="dense residual")
