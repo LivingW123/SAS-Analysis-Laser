@@ -4,12 +4,18 @@ dense model_spectrum_n{n} baseline.
 
 Usage
 -----
-  python infer_cnn.py [csv_path ...]
-  CNN_NBINS=20 python infer_cnn.py [csv_path ...]
+  python infer_cnn.py [shot_path ...]
+  CNN_NBINS=20 python infer_cnn.py [shot_path ...]
   CNN_MODEL_PREFIX=model_cnn_multibump CNN_RESULTS_JSON=cnn_training_results_multibump.json \
-      CNN_NBINS=50 python infer_cnn.py [csv_path ...]
+      CNN_NBINS=50 python infer_cnn.py [shot_path ...]
 
-Defaults to the saturation-corrected vectors for shots 10084 and 11733.
+shot_path may be a raw *_proc.tif image (saturation-corrected inline) or a
+pre-baked *_proc_vector[_corrected].csv (legacy path).
+
+Defaults to the raw processed .tif images for shots 10084 and 11733; the
+Gaussian-imputation saturation correction from rescale_vector.ipynb is applied
+inline (see data_utils.load_shot_vector) rather than requiring pre-baked
+*_proc_vector_corrected.csv files.
 Env vars:
   CNN_NBINS         bin count to evaluate (default 10)
   CNN_MODEL_PREFIX  model filename prefix, loads {prefix}_n{N}.keras (default model_cnn)
@@ -41,7 +47,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from data_utils import bin_drm, load_drm, load_saturation_mask, mev_bin_centers, mev_bin_edges, normalize_apply
+from data_utils import (
+    bin_drm,
+    load_drm,
+    load_saturation_mask,
+    load_shot_vector,
+    mev_bin_centers,
+    mev_bin_edges,
+    normalize_apply,
+)
 from train_cnn import reshape_to_2d
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -54,8 +68,8 @@ MODEL_PREFIX   = os.environ.get("CNN_MODEL_PREFIX", "model_cnn")
 OUT_TAG        = os.environ.get("CNN_OUT_TAG", "")
 
 DEFAULT_SHOTS = [
-    "res/test_images/10084/10084_proc_vector_corrected.csv",
-    "res/test_images/11733/11733_proc_vector_corrected.csv",
+    "res/test_images/10084/10084_proc.tif",
+    "res/test_images/11733/11733_proc.tif",
 ]
 
 
@@ -64,6 +78,22 @@ def load_signal(csv_path: str) -> np.ndarray:
     sig = df[df.columns[-1]].values.astype(np.float32)
     assert len(sig) == 200, f"Expected 200 channels, got {len(sig)}"
     return sig
+
+
+def get_shot_vector(path: str) -> tuple[np.ndarray, np.ndarray | None]:
+    """
+    Load a shot's 200-channel vector plus its saturation mask.
+
+    .tif inputs get the Gaussian-imputation saturation correction applied
+    inline (data_utils.load_shot_vector). .csv inputs are treated as
+    already-corrected vectors, with the mask recovered by diffing against
+    the uncorrected sibling file (legacy path, kept for pre-baked vectors).
+    """
+    if path.lower().endswith((".tif", ".tiff")):
+        return load_shot_vector(path)
+    signal = load_signal(path)
+    sat_mask = load_saturation_mask(path)
+    return signal, sat_mask
 
 
 def l1_normalise(x: np.ndarray) -> np.ndarray:
@@ -77,16 +107,15 @@ def predict(model, x_norm: np.ndarray, as_2d: bool) -> np.ndarray:
     return model.predict(x_norm, verbose=0)[0]
 
 
-def run_shot(csv_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
+def run_shot(shot_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
              dense_model=None, dense_res: dict | None = None) -> None:
-    shot_name = os.path.basename(csv_path).split("_")[0]
-    signal = load_signal(csv_path)
+    shot_name = os.path.basename(shot_path).split("_")[0]
+    signal, sat_mask = get_shot_vector(shot_path)   # sat_mask True = imputed/not a real measurement
     signal_l1 = l1_normalise(signal)
     drm_binned = bin_drm(drm, N_BINS)
     energy_bins = mev_bin_centers(N_BINS)
     channels = np.arange(1, 201)
 
-    sat_mask = load_saturation_mask(csv_path)   # True = imputed/not a real measurement
     unsat = ~sat_mask if sat_mask is not None else np.ones(200, dtype=bool)
 
     models_to_run = [("CNN 5x48", cnn_model, cnn_res, True)]
@@ -231,7 +260,7 @@ def run_shot(csv_path: str, drm: np.ndarray, cnn_model, cnn_res: dict,
 
 
 if __name__ == "__main__":
-    csv_paths = sys.argv[1:] if len(sys.argv) > 1 else DEFAULT_SHOTS
+    shot_paths = sys.argv[1:] if len(sys.argv) > 1 else DEFAULT_SHOTS
 
     drm = load_drm(DRM_PATH)
 
@@ -256,5 +285,5 @@ if __name__ == "__main__":
         print(f"  (no dense baseline for n_bins={N_BINS} — plotting CNN alone)")
         dense_model, dense_res = None, None
 
-    for csv_path in csv_paths:
-        run_shot(csv_path, drm, cnn_model, cnn_res, dense_model, dense_res)
+    for shot_path in shot_paths:
+        run_shot(shot_path, drm, cnn_model, cnn_res, dense_model, dense_res)
