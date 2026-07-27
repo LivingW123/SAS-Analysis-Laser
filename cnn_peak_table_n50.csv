@@ -1,0 +1,7 @@
+shot,proc_vector_peak_mev,proc_vector_peak_frac,proc_vector_resid_pct,proc_vector_ch_peak_mev,proc_vector_ch_peak_frac,proc_vector_ch_resid_pct
+11696,2.5,0.6645,55.6,0.5,0.9772,60.7
+11705,47.5,0.9968,44.1,0.5,0.9971,63.0
+11707,0.5,0.9205,60.3,0.5,0.9948,73.3
+11716,0.5,0.9986,97.8,0.5,1.0,101.9
+10084,49.5,0.7228,26.3,23.5,0.997,85.1
+11733,20.5,1.0,60.6,6.5,1.0,77.0

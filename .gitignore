@@ -7,6 +7,8 @@ TPW/
 *.npy
 *.xlsx
 *.keras
+*.tif
+res/test_images/archived
 
 # notes
 *.txt

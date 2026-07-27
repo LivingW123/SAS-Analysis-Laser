@@ -17,6 +17,7 @@ The 200 effective detector measurements are split into:
 
 Usage
 -----
+<<<<<<< HEAD
     python infer_cnn.py [csv_path ...]
 
 Examples
@@ -46,6 +47,28 @@ Environment variables
 
     CNN_OUT_TAG
         Optional suffix for output filenames.
+=======
+  python infer_cnn.py [shot_path ...]
+  CNN_NBINS=20 python infer_cnn.py [shot_path ...]
+  CNN_MODEL_PREFIX=model_cnn_multibump CNN_RESULTS_JSON=cnn_training_results_multibump.json \
+      CNN_NBINS=50 python infer_cnn.py [shot_path ...]
+
+shot_path may be a raw *_proc.tif image (saturation-corrected inline) or a
+pre-baked *_proc_vector[_corrected].csv (legacy path).
+
+Defaults to the raw processed .tif images for shots 10084 and 11733; the
+Gaussian-imputation saturation correction from rescale_vector.ipynb is applied
+inline (see data_utils.load_shot_vector) rather than requiring pre-baked
+*_proc_vector_corrected.csv files.
+Env vars:
+  CNN_NBINS         bin count to evaluate (default 10)
+  CNN_MODEL_PREFIX  model filename prefix, loads {prefix}_n{N}.keras (default model_cnn)
+  CNN_RESULTS_JSON  results file holding norm stats, keyed by str(N) (default cnn_training_results.json)
+  CNN_OUT_TAG       suffix inserted into output filenames, e.g. "_multibump" (default "")
+The dense model_spectrum_n{N} baseline is included only if a matching
+model file and spectrum_training_results.json[str(N)] entry both exist;
+otherwise the CNN is plotted alone.
+>>>>>>> origin/main
 
 Outputs
 -------
@@ -109,8 +132,8 @@ OUT_TAG = os.environ.get(
 
 
 DEFAULT_SHOTS = [
-    "res/test_images/10084/10084_proc_vector_corrected.csv",
-    "res/test_images/11733/11733_proc_vector_corrected.csv",
+    "res/test_images/10084/10084_proc.tif",
+    "res/test_images/11733/11733_proc.tif",
 ]
 
 
@@ -893,6 +916,8 @@ def run_shot(
         # Unsaturated residual
         # -----------------------------------------------------------
 
+        # Predicted spectrum is already in energy space, not channel space, so it's
+        # identical to the main figure's middle panel — saturation masking doesn't apply.
         ax = axes2[1]
 
 

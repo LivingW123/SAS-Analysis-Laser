@@ -9,6 +9,7 @@ DRM orientation (from TSVD_NN.m: EDRM = x200'):
 
 import numpy as np
 import pandas as pd
+import scipy.optimize as optimize
 
 # PFF form:  a1*exp(-a2*x) + a3*exp(-(x-a4)^2 / a5)
 # Columns: [mean, std, lo, hi] used for bounded-normal sampling.
@@ -65,6 +66,136 @@ def load_saturation_mask(corrected_csv_path: str) -> np.ndarray | None:
     except FileNotFoundError:
         return None
     return raw != corrected
+
+
+# ---------------------------------------------------------------------------
+# Saturation correction (ported from rescale_vector.ipynb)
+# ---------------------------------------------------------------------------
+
+SAT_LIMIT = 0.80   # anything over 80% of the 255 CCD range is over-saturated
+
+
+def vertical_profile(x: np.ndarray, a: float, mu: float, sigma: float) -> np.ndarray:
+    """Gaussian lineout profile used to impute saturated pixels down a column."""
+    return a * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+
+
+def correct_saturation(
+    shot_arr: np.ndarray,
+    sat_limit: float = SAT_LIMIT,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Replace oversaturated CCD pixels with a Gaussian fit to the unsaturated
+    part of their column (rescale_vector.ipynb's correction step).
+
+    Parameters
+    ----------
+    shot_arr  : (H, W) processed shot image, values in [0, 255]
+    sat_limit : fraction of 255 above which a pixel is considered saturated
+
+    Returns
+    -------
+    corrected : (H, W) image, oversaturated columns replaced by their Gaussian fit
+    saturated : (H, W) bool mask, True where the pixel was imputed (not real)
+    """
+    image_height, image_width = shot_arr.shape
+    corrected = np.copy(shot_arr).astype(float)
+    saturated = np.zeros_like(shot_arr, dtype=bool)
+
+    threshold = sat_limit * 255
+    oversaturated_cells = np.argwhere(shot_arr > threshold)
+    if len(oversaturated_cells) == 0:
+        return corrected, saturated
+
+    cols_to_fix = np.unique(oversaturated_cells[:, 1])
+    row_idx = np.arange(image_height)
+
+    for c_idx in cols_to_fix:
+        col = shot_arr[:, c_idx]
+        good = col <= threshold
+        center_guess = np.argmax(col)
+
+        pguess, _ = optimize.curve_fit(
+            vertical_profile, row_idx[good], col[good],
+            p0=[255, center_guess, 5],
+            bounds=([0, 0, 0], [np.inf, image_height, image_height]),
+            maxfev=100000,
+        )
+
+        # the whole column is replaced by the fit (not just the over-threshold
+        # cells), so every row in this column stops being a real measurement
+        corrected[:, c_idx] = vertical_profile(row_idx, *pguess)
+        saturated[:, c_idx] = True
+
+    return corrected, saturated
+
+
+def vectorize_shot_image(shot_arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Reduce a processed (H, W) shot image to the flat 200-channel detector
+    vector used for inference, by averaging lineouts symmetric about the two
+    brightest (adjacent) rows, following rescale_vector.ipynb.
+
+    Returns
+    -------
+    vector       : (200,) float32
+    central_rows : (2,) adjacent row indices picked as the beam center
+    """
+    central_rows = np.sort(np.argsort(np.average(shot_arr, axis=1))[-2:])
+    assert central_rows[1] - central_rows[0] == 1, "Central rows not adjacent!"
+
+    shot_half = np.array([
+        np.average([shot_arr[central_rows[0] - i], shot_arr[central_rows[1] + i]], axis=0)
+        for i in range(5)
+    ])  # [s1, s2, s3, s4, s5]
+    last_row = np.average(shot_half[-1].reshape(8, -1), axis=1)  # 8-averaged tail
+    vector = np.concatenate((shot_half[:-1].flatten(), last_row)).astype(np.float32)
+    return vector, central_rows
+
+
+def vectorize_saturation_mask(saturated_2d: np.ndarray, central_rows: np.ndarray) -> np.ndarray:
+    """Map a (H, W) per-pixel saturation mask through the same lineout-averaging
+    used by vectorize_shot_image, so it lines up with the resulting 200-vector."""
+    sat_half = np.array([
+        np.any([saturated_2d[central_rows[0] - i], saturated_2d[central_rows[1] + i]], axis=0)
+        for i in range(5)
+    ])
+    last_row = np.any(sat_half[-1].reshape(8, -1), axis=1)
+    return np.concatenate((sat_half[:-1].flatten(), last_row))
+
+
+def load_shot_vector(
+    tif_path: str,
+    correct: bool = True,
+    sat_limit: float = SAT_LIMIT,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """
+    Load a processed shot .tif and reduce it to the 200-channel detector
+    vector, applying the Gaussian-imputation saturation correction inline.
+
+    Returns
+    -------
+    vector   : (200,) float32
+    sat_mask : (200,) bool, True where a channel was imputed (not a real
+               measurement); None if correct=False
+    """
+    from PIL import Image
+
+    img = Image.open(tif_path)
+    shot_arr = np.asarray(img, dtype=float)
+    img.close()
+
+    if not correct:
+        vector, _ = vectorize_shot_image(shot_arr)
+        return vector, None
+
+    corrected, saturated_2d = correct_saturation(shot_arr, sat_limit)
+    vector, central_rows = vectorize_shot_image(corrected)
+    sat_mask = (
+        vectorize_saturation_mask(saturated_2d, central_rows)
+        if saturated_2d.any() else np.zeros(200, dtype=bool)
+    )
+    return vector, sat_mask
 
 
 def bin_drm(drm: np.ndarray, n: int) -> np.ndarray:
