@@ -47,19 +47,23 @@ def load_drm(xlsx_path: str) -> np.ndarray:
 
 def load_saturation_mask(corrected_csv_path: str) -> np.ndarray | None:
     """
-    Identify which channels of a *_proc_vector_corrected.csv were altered by
-    rescale_vector.ipynb's saturation correction (Gaussian imputation of
-    oversaturated CCD pixels), by diffing against the sibling uncorrected
-    *_proc_vector.csv.
+    Identify which channels of a corrected shot CSV were altered by a
+    saturation correction, by diffing against the sibling uncorrected
+    *_proc_vector.csv. Handles both the legacy "*_proc_vector_corrected.csv"
+    naming and the current "*_proc_vector_cv.csv" (vertical Gaussian
+    correction, rescale_vector.ipynb) naming.
 
     Returns a (200,) bool array (True = value was imputed / corrected, so not
     a real measurement), or None if the uncorrected sibling file can't be
-    found (e.g. csv_path isn't a "*_corrected.csv" file, or shot doesn't have
-    an uncorrected sibling on disk).
+    found (e.g. csv_path isn't a recognised corrected-variant filename, or
+    the shot doesn't have an uncorrected sibling on disk).
     """
-    if "_corrected" not in corrected_csv_path:
+    for suffix in ("_corrected", "_cv"):
+        if suffix in corrected_csv_path:
+            raw_path = corrected_csv_path.replace(suffix, "")
+            break
+    else:
         return None
-    raw_path = corrected_csv_path.replace("_corrected", "")
     try:
         raw = pd.read_csv(raw_path)["signal"].values.astype(np.float32)
         corrected = pd.read_csv(corrected_csv_path)["signal"].values.astype(np.float32)
@@ -289,6 +293,64 @@ def normalize_apply(
 
 
 # ---------------------------------------------------------------------------
+# Detector saturation / clipping augmentation
+# ---------------------------------------------------------------------------
+
+# Fraction of synthetic training samples that get a saturation plateau, and the
+# range of ceiling heights (as a fraction of each sample's own peak channel).
+# Real CCD lineouts flat-top at the 8-bit ADC limit (~255): the brightest
+# channels of bright shots (e.g. 11716, whose raw lineout peaks sit at ~231-243)
+# clip to a plateau instead of following the smooth DRM response. Training on
+# only smooth DRM@spectrum curves never shows the CNN that shape, so it fits
+# clipped shots poorly. This adds that shape to a subset of samples.
+SAT_FRACTION = 0.30
+SAT_CEIL_LOW  = 0.55   # lowest ceiling = 55% of the sample's clean peak
+SAT_CEIL_HIGH = 0.95   # highest ceiling = 95% of the sample's clean peak
+
+
+def apply_saturation(
+    X: np.ndarray,
+    rng: np.random.Generator,
+    sat_fraction: float = SAT_FRACTION,
+    ceil_low: float = SAT_CEIL_LOW,
+    ceil_high: float = SAT_CEIL_HIGH,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Clip a random subset of samples to a per-sample plateau, emulating CCD
+    saturation. For each selected sample the ceiling is drawn uniformly in
+    [ceil_low, ceil_high] * (that sample's peak channel); every channel above
+    the ceiling is flat-topped to it. Applied in raw detector-count space
+    (before L1 normalization), so the plateau survives the later rescale.
+
+    Parameters
+    ----------
+    X            : (n, C) non-negative detector responses (pre-L1-normalisation)
+    rng          : numpy Generator
+    sat_fraction : fraction of samples to saturate (0 disables, returns X as-is)
+    ceil_low/high: ceiling range as a fraction of each sample's own peak
+
+    Returns
+    -------
+    X_sat    : (n, C) responses with the selected samples clipped
+    sat_mask : (n, C) bool, True where a value was clipped (imputed plateau)
+    """
+    n = X.shape[0]
+    sat_mask = np.zeros_like(X, dtype=bool)
+    if sat_fraction <= 0.0 or n == 0:
+        return X, sat_mask
+
+    X = X.copy()
+    selected = rng.random(n) < sat_fraction               # (n,) bool
+    peak = X.max(axis=1, keepdims=True)                    # (n, 1)
+    frac = rng.uniform(ceil_low, ceil_high, size=(n, 1))   # (n, 1)
+    # non-selected rows get an infinite ceiling => untouched
+    ceiling = np.where(selected[:, None], frac * peak, np.inf)
+    sat_mask = X > ceiling
+    X = np.minimum(X, ceiling)
+    return X.astype(np.float32), sat_mask
+
+
+# ---------------------------------------------------------------------------
 # PFF broad-spectrum generation
 # ---------------------------------------------------------------------------
 
@@ -512,6 +574,7 @@ def generate_spectrum_batch(
     n: int,
     rng: np.random.Generator,
     bump_fraction: float = 0.5,
+    sat_fraction: float = SAT_FRACTION,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Generate (detector_response, spectrum) pairs for spectrum regression.
@@ -526,6 +589,9 @@ def generate_spectrum_batch(
     n             : number of samples
     rng           : numpy Generator
     bump_fraction : fraction of samples that include at least one Gaussian bump
+    sat_fraction  : fraction of samples clipped to a saturation plateau (see
+                    apply_saturation). Set 0.0 to reproduce the old smooth-only
+                    behaviour.
 
     Returns
     -------
@@ -539,6 +605,10 @@ def generate_spectrum_batch(
     sigma = np.sqrt(np.maximum(responses, 1e-8))
     noise = rng.standard_normal(responses.shape) * sigma
     X = np.clip(responses + noise, 0.0, None)
+
+    # Clip a subset to a plateau, emulating CCD saturation, in raw-count space
+    # (before L1 normalisation) so the model trains on near-saturated shapes.
+    X, _ = apply_saturation(X, rng, sat_fraction)
 
     # L1-normalise detector responses to match inference scale
     row_sums = X.sum(axis=1, keepdims=True)

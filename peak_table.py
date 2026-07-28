@@ -51,6 +51,9 @@ VARIANTS = [
     ("proc_vector_ch", "{s}_proc_vector_ch.csv"),   # Matthew Price horizontal correction
 ]
 
+# Shots to run uncorrected-only on, skipping the _ch horizontal-correction variant
+NO_CH_SHOTS = {"10084", "11733"}
+
 
 def load_signal(csv_path: str) -> np.ndarray:
     df = pd.read_csv(csv_path)
@@ -104,6 +107,11 @@ def main() -> None:
     for s in shots:
         row = {"shot": s}
         for label, pattern in VARIANTS:
+            if label == "proc_vector_ch" and s in NO_CH_SHOTS:
+                row[f"{label}_peak_mev"]  = np.nan
+                row[f"{label}_peak_frac"] = np.nan
+                row[f"{label}_resid_pct"] = np.nan
+                continue
             csv_path = os.path.join(TEST_ROOT, s, pattern.format(s=s))
             if not os.path.exists(csv_path):
                 row[f"{label}_peak_mev"]  = np.nan

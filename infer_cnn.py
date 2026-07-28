@@ -68,8 +68,8 @@ MODEL_PREFIX   = os.environ.get("CNN_MODEL_PREFIX", "model_cnn")
 OUT_TAG        = os.environ.get("CNN_OUT_TAG", "")
 
 DEFAULT_SHOTS = [
-    "res/test_images/10084/10084_proc.tif",
-    "res/test_images/11733/11733_proc.tif",
+    "res/test_images/10084/10084_proc_vector_cv.csv",
+    "res/test_images/11733/11733_proc_vector_cv.csv",
 ]
 
 

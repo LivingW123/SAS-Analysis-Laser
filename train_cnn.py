@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 from data_utils import (
+    SAT_FRACTION,
     bin_drm,
     generate_spectrum_batch,
     load_drm,
@@ -132,21 +133,24 @@ def train_for_n(drm: np.ndarray, n_bins: int, rng: np.random.Generator) -> tuple
 
     # --- z-score stats on the 200-vector (same convention as train_spectrum) ---
     print("Bootstrapping normalisation stats (10k samples)...", flush=True)
-    X_boot, _ = generate_spectrum_batch(drm_binned, min(10_000, N_SAMPLES), rng, BUMP_FRACTION)
+    X_boot, _ = generate_spectrum_batch(drm_binned, min(10_000, N_SAMPLES), rng, BUMP_FRACTION,
+                                        sat_fraction=SAT_FRACTION)
     mean, std = normalize_fit(X_boot)
     del X_boot
 
     # --- fixed validation set ---
     print(f"Generating {VAL_SAMPLES:,} validation samples...", flush=True)
     val_rng = np.random.default_rng(SEED + 1)
-    X_val, y_val = generate_spectrum_batch(drm_binned, VAL_SAMPLES, val_rng, BUMP_FRACTION)
+    X_val, y_val = generate_spectrum_batch(drm_binned, VAL_SAMPLES, val_rng, BUMP_FRACTION,
+                                           sat_fraction=SAT_FRACTION)
     X_val_2d = reshape_to_2d(normalize_apply(X_val, mean, std))
     del X_val
 
     # --- training data ---
     print(f"Generating {N_SAMPLES:,} training samples...", flush=True)
     t_gen = time.perf_counter()
-    X_all, y_all = generate_spectrum_batch(drm_binned, N_SAMPLES, rng, BUMP_FRACTION)
+    X_all, y_all = generate_spectrum_batch(drm_binned, N_SAMPLES, rng, BUMP_FRACTION,
+                                           sat_fraction=SAT_FRACTION)
     X_all_2d = reshape_to_2d(normalize_apply(X_all, mean, std))
     del X_all
     print(f"  Generated in {time.perf_counter() - t_gen:.1f}s  "
