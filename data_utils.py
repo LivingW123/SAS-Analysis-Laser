@@ -569,12 +569,71 @@ def denormalize_pff_params(params_norm: np.ndarray) -> np.ndarray:
     return (params_norm * (hi - lo) + lo).astype(np.float32)
 
 
+# ---------------------------------------------------------------------------
+# Detector noise model
+# ---------------------------------------------------------------------------
+
+# The original generator used pure Poisson shot noise (sigma = sqrt(response)),
+# which has no free scale and drops to ~0 in low-signal channels. Real detector
+# noise usually also has a read/dark floor and can be over- or under-dispersed
+# relative to sqrt(N). These knobs let a sweep find the level that best matches
+# the real shots. gain=1.0/read=0.0/mult=0.0 reproduces the original pure-Poisson
+# behaviour; the defaults below are the winner of NOISE_SEARCH_PLAN.md's search
+# (grid -> refine -> 3-seed verification against the NNLS floor on real shots).
+#
+#   sigma_i = sqrt( (READ_FRAC * peak)^2  +  NOISE_GAIN * response_i
+#                    + (MULT_FRAC * response_i)^2 )
+#
+#   NOISE_GAIN : shot-noise scale (variance = gain * signal). 1.0 = pure Poisson,
+#                >1 = noisier, <1 = cleaner. This is the primary "amount of noise".
+#   READ_FRAC  : additive Gaussian floor as a fraction of each sample's peak
+#                channel (models read/dark noise; keeps low-signal channels noisy).
+#   MULT_FRAC  : signal-proportional noise (flat-field / gain non-uniformity).
+NOISE_GAIN = 5.0
+READ_FRAC  = 0.10
+MULT_FRAC  = 0.0
+
+
+def add_detector_noise(
+    responses: np.ndarray,
+    rng: np.random.Generator,
+    noise_gain: float = NOISE_GAIN,
+    read_frac: float = READ_FRAC,
+    mult_frac: float = MULT_FRAC,
+) -> np.ndarray:
+    """
+    Add the parameterized detector noise model to clean responses and clip to >=0.
+
+    Parameters
+    ----------
+    responses  : (n, C) non-negative clean detector responses (DRM @ spectrum)
+    rng        : numpy Generator
+    noise_gain : shot-noise variance scale (1.0 = pure Poisson sqrt(N))
+    read_frac  : additive floor sigma as a fraction of each sample's peak channel
+    mult_frac  : signal-proportional noise fraction
+
+    Returns
+    -------
+    (n, C) noisy responses, clipped at 0.
+    """
+    peak = responses.max(axis=1, keepdims=True)                       # (n, 1)
+    var = (noise_gain * np.maximum(responses, 0.0)
+           + (read_frac * peak) ** 2
+           + (mult_frac * responses) ** 2)
+    sigma = np.sqrt(np.maximum(var, 1e-12))
+    noisy = responses + rng.standard_normal(responses.shape) * sigma
+    return np.clip(noisy, 0.0, None)
+
+
 def generate_spectrum_batch(
     drm_50: np.ndarray,
     n: int,
     rng: np.random.Generator,
     bump_fraction: float = 0.5,
     sat_fraction: float = SAT_FRACTION,
+    noise_gain: float = NOISE_GAIN,
+    read_frac: float = READ_FRAC,
+    mult_frac: float = MULT_FRAC,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Generate (detector_response, spectrum) pairs for spectrum regression.
@@ -592,6 +651,8 @@ def generate_spectrum_batch(
     sat_fraction  : fraction of samples clipped to a saturation plateau (see
                     apply_saturation). Set 0.0 to reproduce the old smooth-only
                     behaviour.
+    noise_gain / read_frac / mult_frac : detector-noise model knobs, see
+                    add_detector_noise. Defaults (1.0, 0.0, 0.0) = pure Poisson.
 
     Returns
     -------
@@ -602,9 +663,7 @@ def generate_spectrum_batch(
     spectra, _ = sample_pff_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
 
     responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
-    sigma = np.sqrt(np.maximum(responses, 1e-8))
-    noise = rng.standard_normal(responses.shape) * sigma
-    X = np.clip(responses + noise, 0.0, None)
+    X = add_detector_noise(responses, rng, noise_gain, read_frac, mult_frac)
 
     # Clip a subset to a plateau, emulating CCD saturation, in raw-count space
     # (before L1 normalisation) so the model trains on near-saturated shapes.
