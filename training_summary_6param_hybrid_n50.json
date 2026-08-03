@@ -1,10 +1,10 @@
 {
   "num_energy_bins": 50,
-  "epochs_completed": 200,
-  "best_epoch": 195,
-  "best_train_loss": 2.934911890406511e-06,
-  "best_validation_loss": 1.548855948385608e-06,
-  "best_train_mae": 0.0009114998392760754,
-  "best_validation_mae": 0.0006310971220955253,
+  "epochs_completed": 33,
+  "best_epoch": 3,
+  "best_train_loss": 0.00021690624998882413,
+  "best_validation_loss": 0.0002208489167969674,
+  "best_train_mae": 0.006341979838907719,
+  "best_validation_mae": 0.006323246750980616,
   "best_model_path": "best_model_6param_hybrid_n50.keras"
 }
