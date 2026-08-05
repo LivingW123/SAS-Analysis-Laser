@@ -11,16 +11,18 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimize
 
-# PFF form:  a1*exp(-a2*x) + a3*exp(-(x-a4)^2 / a5)
+# Six-parameter PFF form:
+#   a1*exp(-a2*x) + a3*exp(-(x-a4)^2 / (a5*x + a6/x))
 # Columns: [mean, std, lo, hi] used for bounded-normal sampling.
 # a3 (bump amplitude) bounds are for the bump-present case; set to 0 for no-bump.
 PFF_PARAM_SAMPLING = np.array([
-    [200.0, 200.0, 0.1,  500.0],   # a1 — bremsstrahlung amplitude
-    [0.25,  0.2,   0.01,   1.0],   # a2 — bremsstrahlung decay rate (1/MeV)
-    [8.0,   10.0,  5.0,  100.0],   # a3 — bump amplitude (bump-present lo = 5)
-    [35.0,  25.0,  1.0,   49.0],   # a4 — bump centre (MeV)
-    [40.0,  25.0,  5.0,  100.0],   # a5 — bump width parameter
-])
+    [150, 100, 50, 250],
+    [0.3, 1, 0.01, 2],
+    [20, 10, 0, 50],
+    [20, 25, 1, 49],
+    [0.5, 1, 1e-6, 10],
+    [100, 500, 1e-6, 10000]
+], dtype=np.float64)
 # a2's hi was originally 5.0 /MeV, which after binning + L1-normalization
 # collapses ~13% of "spectra" to a single near-delta bin (median a2 for
 # collapsed samples was ~3.06 vs ~1.22 overall) — not a physical spectrum
@@ -34,7 +36,8 @@ PFF_PARAM_BOUNDS = np.array([
     [0.01,   1.0],   # a2
     [0.0,  100.0],   # a3
     [1.0,   49.0],   # a4
-    [5.0,  100.0],   # a5
+    [1e-6,  10.0],   # a5
+    [1e-6, 1.0e4],   # a6
 ])
 
 
@@ -47,19 +50,23 @@ def load_drm(xlsx_path: str) -> np.ndarray:
 
 def load_saturation_mask(corrected_csv_path: str) -> np.ndarray | None:
     """
-    Identify which channels of a *_proc_vector_corrected.csv were altered by
-    rescale_vector.ipynb's saturation correction (Gaussian imputation of
-    oversaturated CCD pixels), by diffing against the sibling uncorrected
-    *_proc_vector.csv.
+    Identify which channels of a corrected shot CSV were altered by a
+    saturation correction, by diffing against the sibling uncorrected
+    *_proc_vector.csv. Handles both the legacy "*_proc_vector_corrected.csv"
+    naming and the current "*_proc_vector_cv.csv" (vertical Gaussian
+    correction, rescale_vector.ipynb) naming.
 
     Returns a (200,) bool array (True = value was imputed / corrected, so not
     a real measurement), or None if the uncorrected sibling file can't be
-    found (e.g. csv_path isn't a "*_corrected.csv" file, or shot doesn't have
-    an uncorrected sibling on disk).
+    found (e.g. csv_path isn't a recognised corrected-variant filename, or
+    the shot doesn't have an uncorrected sibling on disk).
     """
-    if "_corrected" not in corrected_csv_path:
+    for suffix in ("_corrected", "_cv"):
+        if suffix in corrected_csv_path:
+            raw_path = corrected_csv_path.replace(suffix, "")
+            break
+    else:
         return None
-    raw_path = corrected_csv_path.replace("_corrected", "")
     try:
         raw = pd.read_csv(raw_path)["signal"].values.astype(np.float32)
         corrected = pd.read_csv(corrected_csv_path)["signal"].values.astype(np.float32)
@@ -289,13 +296,83 @@ def normalize_apply(
 
 
 # ---------------------------------------------------------------------------
+# Detector saturation / clipping augmentation
+# ---------------------------------------------------------------------------
+
+# Fraction of synthetic training samples that get a saturation plateau, and the
+# range of ceiling heights (as a fraction of each sample's own peak channel).
+# Real CCD lineouts flat-top at the 8-bit ADC limit (~255): the brightest
+# channels of bright shots (e.g. 11716, whose raw lineout peaks sit at ~231-243)
+# clip to a plateau instead of following the smooth DRM response. Training on
+# only smooth DRM@spectrum curves never shows the CNN that shape, so it fits
+# clipped shots poorly. This adds that shape to a subset of samples.
+
+SAT_FRACTION = 0.0
+SAT_CEIL_LOW = 0.70
+SAT_CEIL_HIGH = 0.98
+
+
+def apply_saturation(
+    X: np.ndarray,
+    rng: np.random.Generator,
+    sat_fraction: float = SAT_FRACTION,
+    ceil_low: float = SAT_CEIL_LOW,
+    ceil_high: float = SAT_CEIL_HIGH,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Clip a random subset of samples to a per-sample plateau, emulating CCD
+    saturation. For each selected sample the ceiling is drawn uniformly in
+    [ceil_low, ceil_high] * (that sample's peak channel); every channel above
+    the ceiling is flat-topped to it. Applied in raw detector-count space
+    (before L1 normalization), so the plateau survives the later rescale.
+
+    Parameters
+    ----------
+    X            : (n, C) non-negative detector responses (pre-L1-normalisation)
+    rng          : numpy Generator
+    sat_fraction : fraction of samples to saturate (0 disables, returns X as-is)
+    ceil_low/high: ceiling range as a fraction of each sample's own peak
+
+    Returns
+    -------
+    X_sat    : (n, C) responses with the selected samples clipped
+    sat_mask : (n, C) bool, True where a value was clipped (imputed plateau)
+    """
+    n = X.shape[0]
+    sat_mask = np.zeros_like(X, dtype=bool)
+    if sat_fraction <= 0.0 or n == 0:
+        return X, sat_mask
+
+    X = X.copy()
+    selected = rng.random(n) < sat_fraction               # (n,) bool
+    peak = X.max(axis=1, keepdims=True)                    # (n, 1)
+    frac = rng.uniform(ceil_low, ceil_high, size=(n, 1))   # (n, 1)
+    # non-selected rows get an infinite ceiling => untouched
+    ceiling = np.where(selected[:, None], frac * peak, np.inf)
+    sat_mask = X > ceiling
+    X = np.minimum(X, ceiling)
+    return X.astype(np.float32), sat_mask
+
+
+# ---------------------------------------------------------------------------
 # PFF broad-spectrum generation
 # ---------------------------------------------------------------------------
 
 def pff_func(x: np.ndarray, params: np.ndarray) -> np.ndarray:
-    """Evaluate the PFF model: a1*exp(-a2*x) + a3*exp(-(x-a4)^2/a5)."""
-    a1, a2, a3, a4, a5 = params
-    return a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / a5)
+    """
+    Evaluate the six-parameter PFF model:
+
+        a1*exp(-a2*x)
+        + a3*exp(-(x-a4)^2 / (a5*x + a6/x))
+    """
+    a1, a2, a3, a4, a5, a6 = params
+    x_safe = np.maximum(np.asarray(x, dtype=np.float64), 1e-12)
+    denominator = a5 * x_safe + a6 / x_safe
+    denominator = np.maximum(denominator, 1e-12)
+    return (
+        a1 * np.exp(-a2 * x_safe)
+        + a3 * np.exp(-((x_safe - a4) ** 2) / denominator)
+    )
 
 
 def _sample_one_param(j: int, has_bump: bool, rng: np.random.Generator) -> float:
@@ -315,9 +392,9 @@ def _sample_params_vec(n: int, has_bump: bool, rng: np.random.Generator) -> np.n
     Vectorised bounded-normal sampling for n PFF parameter sets.
 
     Uses rejection sampling entirely in NumPy (no Python loop over samples).
-    Returns (n, 5) array.
+    Returns (n, 6) array.
     """
-    mu    = PFF_PARAM_SAMPLING[:, 0]   # (5,)
+    mu    = PFF_PARAM_SAMPLING[:, 0]   # (6,)
     sigma = PFF_PARAM_SAMPLING[:, 1]
     lo    = PFF_PARAM_SAMPLING[:, 2].copy()
     hi    = PFF_PARAM_SAMPLING[:, 3]
@@ -325,12 +402,12 @@ def _sample_params_vec(n: int, has_bump: bool, rng: np.random.Generator) -> np.n
     if has_bump:
         lo[2] = 5.0   # visible bump: a3 >= 5
 
-    out  = rng.normal(mu, sigma, size=(n, 5))   # (n, 5) initial draw
-    mask = (out < lo) | (out > hi)              # (n, 5) invalid entries
+    out  = rng.normal(mu, sigma, size=(n, 6))   # (n, 6) initial draw
+    mask = (out < lo) | (out > hi)              # (n, 6) invalid entries
 
     # Iteratively redraw invalid entries until all are in bounds.
     while mask.any():
-        redraw = rng.normal(mu, sigma, size=(n, 5))
+        redraw = rng.normal(mu, sigma, size=(n, 6))
         out    = np.where(mask, redraw, out)
         mask   = (out < lo) | (out > hi)
 
@@ -370,10 +447,17 @@ def sample_pff_spectra(
     p_no_bump = _sample_params_vec(n_no_bump, False, rng)  # (n_no_bump, 5)
     params    = np.vstack([p_bump, p_no_bump])             # (n_samples, 5)
 
-    # Vectorised PFF evaluation: (n, M)
-    x  = energy_bins[np.newaxis, :]               # (1, M)
-    a1, a2, a3, a4, a5 = (params[:, j, np.newaxis] for j in range(5))
-    spectra = a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / a5)
+    # Vectorised six-parameter PFF evaluation: (n, M)
+    x = np.maximum(energy_bins[np.newaxis, :].astype(np.float64), 1e-12)
+    a1, a2, a3, a4, a5, a6 = (
+        params[:, j, np.newaxis] for j in range(6)
+    )
+    denominator = a5 * x + a6 / x
+    denominator = np.maximum(denominator, 1e-12)
+    spectra = (
+        a1 * np.exp(-a2 * x)
+        + a3 * np.exp(-((x - a4) ** 2) / denominator)
+    )
 
     idx = rng.permutation(n_samples)
     return spectra[idx], params[idx]
@@ -403,7 +487,7 @@ def generate_pff_training_data(
     Returns
     -------
     X      : (n_samples, 200) float32 — noisy detector responses
-    params : (n_samples, 5)   float32 — PFF parameters [a1, a2, a3, a4, a5]
+    params : (n_samples, 6)   float32 — PFF parameters [a1, a2, a3, a4, a5, a6]
     """
     energy_bins = mev_bin_centers(drm.shape[1])
     spectra, params = sample_pff_spectra(n_samples, energy_bins, rng, bump_fraction)
@@ -426,21 +510,33 @@ def generate_pff_training_data(
 MAX_BUMPS = 3   # multi-bump spectrum generation — see sample_multibump_spectra
 
 
-def _sample_bump_params_vec(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Vectorised bounded-normal sampling for n (a3, a4, a5) bump triples, bump-present bounds."""
-    mu    = PFF_PARAM_SAMPLING[2:, 0]   # (3,) a3, a4, a5 means
+def _sample_bump_params_vec(
+    n: int,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Sample bounded (a3, a4, a5, a6) values for one bump."""
+    mu = PFF_PARAM_SAMPLING[2:, 0]
     sigma = PFF_PARAM_SAMPLING[2:, 1]
-    lo    = PFF_PARAM_SAMPLING[2:, 2].copy()
-    hi    = PFF_PARAM_SAMPLING[2:, 3]
-    lo[0] = 5.0   # a3 bump-present lower bound
+    lo = PFF_PARAM_SAMPLING[2:, 2].copy()
+    hi = PFF_PARAM_SAMPLING[2:, 3]
 
-    out  = rng.normal(mu, sigma, size=(n, 3))
+    out = rng.normal(mu, sigma, size=(n, 4))
     mask = (out < lo) | (out > hi)
+
     while mask.any():
-        redraw = rng.normal(mu, sigma, size=(n, 3))
-        out    = np.where(mask, redraw, out)
-        mask   = (out < lo) | (out > hi)
-    return out[:, 0], out[:, 1], out[:, 2]   # a3, a4, a5
+        redraw = rng.normal(mu, sigma, size=(n, 4))
+        out = np.where(mask, redraw, out)
+        mask = (out < lo) | (out > hi)
+
+    # Preserve the file's current uniform bump-center behavior.
+    out[:, 1] = rng.uniform(2.0, 48.0, size=n)
+
+    return (
+        out[:, 0],  # a3
+        out[:, 1],  # a4
+        out[:, 2],  # a5
+        out[:, 3],  # a6
+    )
 
 
 def sample_multibump_spectra(
@@ -485,10 +581,21 @@ def sample_multibump_spectra(
     n_bumps  = np.where(has_bump, rng.integers(1, max_bumps + 1, size=n_samples), 0)
 
     for slot in range(max_bumps):
-        a3, a4, a5 = _sample_bump_params_vec(n_samples, rng)
+        a3, a4, a5, a6 = _sample_bump_params_vec(n_samples, rng)
         active = slot < n_bumps
         a3 = np.where(active, a3, 0.0)
-        spectra += a3[:, np.newaxis] * np.exp(-(x - a4[:, np.newaxis]) ** 2 / a5[:, np.newaxis])
+
+        x_safe = np.maximum(x, 1e-12)
+        denominator = (
+            a5[:, np.newaxis] * x_safe
+            + a6[:, np.newaxis] / x_safe
+        )
+        denominator = np.maximum(denominator, 1e-12)
+
+        spectra += (
+            a3[:, np.newaxis]
+            * np.exp(-((x_safe - a4[:, np.newaxis]) ** 2) / denominator)
+        )
 
     return spectra
 
@@ -507,45 +614,114 @@ def denormalize_pff_params(params_norm: np.ndarray) -> np.ndarray:
     return (params_norm * (hi - lo) + lo).astype(np.float32)
 
 
+# ---------------------------------------------------------------------------
+# Detector noise model
+# ---------------------------------------------------------------------------
+
+# The original generator used pure Poisson shot noise (sigma = sqrt(response)),
+# which has no free scale and drops to ~0 in low-signal channels. Real detector
+# noise usually also has a read/dark floor and can be over- or under-dispersed
+# relative to sqrt(N). These knobs let a sweep find the level that best matches
+# the real shots. gain=1.0/read=0.0/mult=0.0 reproduces the original pure-Poisson
+# behaviour; the defaults below are the winner of NOISE_SEARCH_PLAN.md's search
+# (grid -> refine -> 3-seed verification against the NNLS floor on real shots).
+#
+#   sigma_i = sqrt( (READ_FRAC * peak)^2  +  NOISE_GAIN * response_i
+#                    + (MULT_FRAC * response_i)^2 )
+#
+#   NOISE_GAIN : shot-noise scale (variance = gain * signal). 1.0 = pure Poisson,
+#                >1 = noisier, <1 = cleaner. This is the primary "amount of noise".
+#   READ_FRAC  : additive Gaussian floor as a fraction of each sample's peak
+#                channel (models read/dark noise; keeps low-signal channels noisy).
+#   MULT_FRAC  : signal-proportional noise (flat-field / gain non-uniformity).
+NOISE_GAIN = 0.0
+READ_FRAC = 0.00
+MULT_FRAC = 0.0
+
+
+def add_detector_noise(
+    responses: np.ndarray,
+    rng: np.random.Generator,
+    noise_gain: float = NOISE_GAIN,
+    read_frac: float = READ_FRAC,
+    mult_frac: float = MULT_FRAC,
+) -> np.ndarray:
+    """
+    Add the parameterized detector noise model to clean responses and clip to >=0.
+
+    Parameters
+    ----------
+    responses  : (n, C) non-negative clean detector responses (DRM @ spectrum)
+    rng        : numpy Generator
+    noise_gain : shot-noise variance scale (1.0 = pure Poisson sqrt(N))
+    read_frac  : additive floor sigma as a fraction of each sample's peak channel
+    mult_frac  : signal-proportional noise fraction
+
+    Returns
+    -------
+    (n, C) noisy responses, clipped at 0.
+    """
+    peak = responses.max(axis=1, keepdims=True)                       # (n, 1)
+    var = (noise_gain * np.maximum(responses, 0.0)
+           + (read_frac * peak) ** 2
+           + (mult_frac * responses) ** 2)
+    sigma = np.sqrt(np.maximum(var, 1e-12))
+    noisy = responses + rng.standard_normal(responses.shape) * sigma
+    return np.clip(noisy, 0.0, None)
+
+
 def generate_spectrum_batch(
     drm_50: np.ndarray,
     n: int,
     rng: np.random.Generator,
-    bump_fraction: float = 0.5,
+    bump_fraction: float = 0.80,
+    sat_fraction: float = 0.10,
+    noise_gain: float = 5.0,
+    read_frac: float = 0.02,
+    mult_frac: float = 0.01,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Generate (detector_response, spectrum) pairs for spectrum regression.
 
-    Spectra are drawn from sample_pff_spectra — the single bremsstrahlung
-    exponential + one Gaussian bump PFF form (same form used for
-    pff_infer_11733.png / train_pff.py's direct 5-parameter regressor).
+    energy_bins = mev_bin_centers(
+        drm_50.shape[1]
+    )
 
-    Parameters
-    ----------
-    drm_50        : (200, n_bins) binned DRM — call bin_drm(drm, n_bins) before passing in
-    n             : number of samples
-    rng           : numpy Generator
-    bump_fraction : fraction of samples that include at least one Gaussian bump
+    # Exact six-parameter family: no bump when a3=0, otherwise one bump.
+    spectra, _ = sample_pff_spectra(
+        n_samples=n,
+        energy_bins=energy_bins,
+        rng=rng,
+        bump_fraction=bump_fraction,
+    )
 
-    Returns
-    -------
-    X : (n, 200)     float32 — L1-normalised noisy detector responses
-    y : (n, n_bins)  float32 — L1-normalised spectra (targets)
-    """
-    energy_bins = mev_bin_centers(drm_50.shape[1])          # (n_bins,) MeV centres
-    spectra, _ = sample_pff_spectra(n, energy_bins, rng, bump_fraction)  # (n, n_bins)
+    responses = (
+        drm_50 @ spectra.T
+    ).T
 
-    responses = (drm_50 @ spectra.T).T                      # (n, 200) detector space
-    sigma = np.sqrt(np.maximum(responses, 1e-8))
-    noise = rng.standard_normal(responses.shape) * sigma
-    X = np.clip(responses + noise, 0.0, None)
+    X = add_detector_noise(
+        responses,
+        rng,
+        noise_gain=noise_gain,
+        read_frac=read_frac,
+        mult_frac=mult_frac,
+    )
 
-    # L1-normalise detector responses to match inference scale
-    row_sums = X.sum(axis=1, keepdims=True)
-    X = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
+    X, _ = apply_saturation(
+        X,
+        rng,
+        sat_fraction=sat_fraction,
+    )
 
-    # L1-normalise spectra — targets are probability distributions over energy bins
-    spec_sums = spectra.sum(axis=1, keepdims=True)
-    y = (spectra / np.maximum(spec_sums, 1e-12)).astype(np.float32)
+    X = X / np.maximum(
+        X.sum(axis=1, keepdims=True),
+        1e-12,
+    )
 
-    return X, y
+    y = spectra / np.maximum(
+        spectra.sum(axis=1, keepdims=True),
+        1e-12,
+    )
+
+    return (
+        X.astype(np.float32),
+        y.astype(np.float32),
+    )

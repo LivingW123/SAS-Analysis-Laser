@@ -99,7 +99,7 @@ N_BINS = int(
 
 MODEL_PREFIX = os.environ.get(
     "CNN_MODEL_PREFIX",
-    "best_model_6param_hybrid",
+    "best_model_exact_data_utils",
 )
 
 OUT_TAG = os.environ.get(
