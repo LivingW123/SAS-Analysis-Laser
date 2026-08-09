@@ -4,12 +4,19 @@ Run the trained PFF regressor on 11733.csv and sanity-check the result.
 The real signal is L1-normalised before inference to match the training
 distribution (training data was also L1-normalised in generate_pff_training_data).
 
+model_pff.keras predicts a ReLU-constrained mean plus a per-parameter
+log-variance (see train_pff.py), giving an actual predictive uncertainty
+band on the fitted spectrum, not just a point estimate to compare against
+the residual.
+
 Outputs
 -------
-  Console : predicted PFF params, normalised param positions, residual stats
+  Console : predicted PFF params (mean +/- 1-sigma), normalised param
+            positions, residual stats
   pff_infer_11733.png : 3-panel figure
       top    — L1-normalised real signal vs L1-normalised DRM-forward of predicted spectrum
-      middle — predicted PFF spectrum in energy space
+      middle — predicted PFF spectrum in energy space, with a +/-1-sigma band
+               from Monte Carlo sampling the predicted param uncertainty
       bottom — channel-wise residual
 """
 
@@ -29,13 +36,19 @@ from data_utils import (
     mev_bin_centers,
     normalize_apply,
     pff_func,
+    pff_mean_sigma,
 )
+
+N_MC_DRAWS = 500   # Monte Carlo draws for the spectrum uncertainty band
+MC_SEED    = 7
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 CSV_PATH   = "res/test_images/11733/processed/11733.csv"
-JSON_PATH  = "pff_training_results.json"
-MODEL_PATH = "model_pff.keras"
+# ReLU-mean + logvar model, distinct from the original sigmoid model_pff.keras
+# (restored from git HEAD; incompatible with this script's 10-wide output decoding).
+JSON_PATH  = "pff_training_results_relu_uncertainty.json"
+MODEL_PATH = "model_pff_relu_uncertainty.keras"
 DRM_PATH   = "res/drm/200x200.xlsx"
 PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
 
@@ -78,9 +91,10 @@ if __name__ == "__main__":
     # z-score normalise (same as training)
     x_norm = normalize_apply(signal_l1.reshape(1, -1), mean, std)
 
-    # predict
-    p_norm = model.predict(x_norm, verbose=0)[0]               # (5,) in [0,1]
-    p_phys = p_norm * (param_bounds[:, 1] - param_bounds[:, 0]) + param_bounds[:, 0]  # physical units
+    # predict: pff_out is (mu_norm, logvar_norm) concatenated, (10,)
+    pff_out = model.predict(x_norm, verbose=0)[0]
+    p_phys, p_sigma = pff_mean_sigma(pff_out, param_bounds)     # both (5,), physical units
+    p_norm = pff_out[:5]                                        # for the [0,1] console column
 
     # --- reconstruct: spectrum -> DRM -> L1-normalise ---
     energy_bins   = mev_bin_centers(drm.shape[1])
@@ -102,13 +116,14 @@ if __name__ == "__main__":
     sig_p = PFF_PARAM_SAMPLING[:, 1]
 
     print(f"\n=== PFF inference on {shot_name} ===")
-    print(f"{'Param':>5}  {'Predicted':>10}  {'Train mean':>11}  "
+    print(f"{'Param':>5}  {'Predicted +/- 1sig':>20}  {'Train mean':>11}  "
           f"{'Norm [0,1]':>10}  {'z-score':>10}")
     for j, n in enumerate(PARAM_NAMES):
         norm_val = float(p_norm[j])
         phys_val = float(p_phys[j])
+        sig_val  = float(p_sigma[j])
         z        = (phys_val - mu[j]) / sig_p[j]
-        print(f"  {n:>3}  {phys_val:>10.3f}  {mu[j]:>11.3f}  "
+        print(f"  {n:>3}  {phys_val:>10.3f} +/- {sig_val:<6.3f}  {mu[j]:>11.3f}  "
               f"{norm_val:>10.4f}  {z:>+10.2f}")
 
     print(f"\nResidual RMS (L1 space) : {resid_rms:.6f}")
@@ -137,19 +152,36 @@ if __name__ == "__main__":
     ax.legend()
     ax.set_title(f"Detector response: real vs reconstructed  (residual {100*resid_rms/signal_rms:.1f}%)")
 
+    # Monte Carlo the +/-1-sigma spectrum band: draw params independently from
+    # each parameter's predicted N(mean, sigma), clip to param_bounds (PFF
+    # params can't be negative, and e.g. a4 can't physically exceed the
+    # 0-50 MeV detector range even though sigma alone is unbounded),
+    # evaluate pff_func per draw, take pointwise 16th/84th percentiles. This
+    # propagates the head's per-parameter uncertainty into spectrum space --
+    # a residual alone says nothing about how much to trust
+    # the fit away from the measured channels.
+    mc_rng    = np.random.default_rng(MC_SEED)
+    draws     = mc_rng.normal(p_phys, p_sigma, size=(N_MC_DRAWS, 5))
+    draws     = np.clip(draws, param_bounds[:, 0], param_bounds[:, 1])
+    mc_spectra = np.stack([pff_func(energy_bins, draws[i]) for i in range(N_MC_DRAWS)])
+    band_lo   = np.percentile(mc_spectra, 16, axis=0)
+    band_hi   = np.percentile(mc_spectra, 84, axis=0)
+
     ax = axes[1]
     bin_width = energy_bins[1] - energy_bins[0]
     brems = p_phys[0] * np.exp(-p_phys[1] * energy_bins)
+    ax.fill_between(energy_bins, band_lo, band_hi, color="steelblue", alpha=0.25,
+                     label="+/-1sig band (param uncertainty)")
     ax.bar(energy_bins, spec_pred, width=bin_width * 0.9,
            color="steelblue", alpha=0.75, label="full PFF spectrum")
     ax.plot(energy_bins, brems, "g--", lw=1.5, label="bremsstrahlung only")
     if bump_present:
         ax.axvline(p_phys[3], color="r", ls=":", lw=1.2,
-                   label=f"bump centre {p_phys[3]:.1f} MeV")
+                   label=f"bump centre {p_phys[3]:.1f} +/- {p_sigma[3]:.1f} MeV")
     ax.set_xlabel("Energy (MeV)")
     ax.set_ylabel("Intensity (arb.)")
     ax.legend()
-    ax.set_title("Predicted PFF spectrum (energy space)")
+    ax.set_title("Predicted PFF spectrum (energy space), +/-1sig param-uncertainty band")
 
     ax = axes[2]
     if sat_mask is not None and sat_mask.any():

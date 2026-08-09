@@ -441,50 +441,6 @@ def sample_pff_spectra(
     return spectra[idx], params[idx]
 
 
-def generate_pff_training_data(
-    drm: np.ndarray,
-    n_samples: int,
-    rng: np.random.Generator,
-    bump_fraction: float = 0.5,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Generate (detector response, PFF params) training pairs.
-
-    Pipeline:
-      1. Sample PFF spectra in energy space
-      2. drm @ spectrum  →  detector-channel response
-      3. Add Poisson noise  (σ = √response per channel)
-
-    Parameters
-    ----------
-    drm           : (200, 200) detector-channel × energy-bin matrix
-    n_samples     : total samples to generate
-    rng           : numpy Generator
-    bump_fraction : fraction of samples that include a Gaussian bump
-
-    Returns
-    -------
-    X      : (n_samples, 200) float32 — noisy detector responses
-    params : (n_samples, 5)   float32 — PFF parameters [a1, a2, a3, a4, a5]
-    """
-    energy_bins = mev_bin_centers(drm.shape[1])
-    spectra, params = sample_pff_spectra(n_samples, energy_bins, rng, bump_fraction)
-
-    # DRM forward pass: (200, n) = (200, 200) @ (200, n)
-    responses = (drm @ spectra.T).T              # (n_samples, 200)
-
-    sigma = np.sqrt(np.maximum(responses, 1e-8))
-    noise = rng.standard_normal(responses.shape) * sigma
-    X = np.clip(responses + noise, 0.0, None)
-
-    # L1-normalise each response so training and inference live on the same scale
-    # regardless of the DRM's absolute units vs the real detector's raw units.
-    row_sums = X.sum(axis=1, keepdims=True)
-    X = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
-
-    return X, params.astype(np.float32)
-
-
 MAX_BUMPS = 3   # multi-bump spectrum generation — see sample_multibump_spectra
 
 
@@ -567,6 +523,43 @@ def denormalize_pff_params(params_norm: np.ndarray) -> np.ndarray:
     lo = PFF_PARAM_BOUNDS[:, 0]
     hi = PFF_PARAM_BOUNDS[:, 1]
     return (params_norm * (hi - lo) + lo).astype(np.float32)
+
+
+def pff_mean_sigma(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Split a heteroscedastic PFF-param head's raw output into physical-units
+    (mean, sigma).
+
+    pff_out is (mu_norm, logvar_norm) concatenated along the last axis, each
+    width 5, with mu_norm in normalize_pff_params's [0,1]-ish space (see
+    train_pff.py / train_cnn_multires.py's pff_nll_loss -- both heads use
+    this same layout: ReLU mean + linear logvar). Denormalization is an
+    affine map (param_bounds range * x + lo), so sigma -- unlike mu -- only
+    picks up the multiplicative part; it has no lo offset to add.
+
+    mu is clipped to param_bounds after denormalizing. ReLU only constrains
+    the raw output to >=0 in normalized space, not <=1 -- it can extrapolate
+    arbitrarily far past the training distribution's upper edge, which real
+    (out-of-distribution) shots do: a4 (bump centre, physically must be
+    within the 0-50 MeV detector range) has come back in the hundreds of MeV
+    on some real shots, and a runaway a2 (decay rate) sends the reconstructed
+    spectrum through dozens of orders of magnitude over 0-50 MeV -- neither
+    is a physically meaningful fit. Clipping to param_bounds (the same
+    bounds the training distribution itself was sampled from) keeps the
+    reported/plotted fit inside the physically valid range; sigma is left
+    unclipped since a mean pinned at the boundary with a wide sigma is
+    itself informative (says the fit wanted to go further and is unsure).
+
+    Works on a single sample, shape (10,) -> two (5,) arrays, or a batch,
+    shape (N, 10) -> two (N, 5) arrays.
+    """
+    mu_norm = pff_out[..., :5]
+    logvar_norm = pff_out[..., 5:]
+    sigma_norm = np.exp(0.5 * np.clip(logvar_norm, -10.0, 10.0))
+    mu_phys = denormalize_pff_params(mu_norm)
+    mu_phys = np.clip(mu_phys, param_bounds[:, 0], param_bounds[:, 1])
+    sigma_phys = sigma_norm * (param_bounds[:, 1] - param_bounds[:, 0])
+    return mu_phys, sigma_phys
 
 
 # ---------------------------------------------------------------------------
@@ -678,3 +671,67 @@ def generate_spectrum_batch(
     y = (spectra / np.maximum(spec_sums, 1e-12)).astype(np.float32)
 
     return X, y
+
+
+def generate_pff_training_data(
+    drm: np.ndarray,
+    n_samples: int,
+    rng: np.random.Generator,
+    bump_fraction: float = 0.5,
+    sat_fraction: float = SAT_FRACTION,
+    noise_gain: float = NOISE_GAIN,
+    read_frac: float = READ_FRAC,
+    mult_frac: float = MULT_FRAC,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Generate (detector response, PFF params) training pairs.
+
+    Pipeline:
+      1. Sample PFF spectra in energy space
+      2. drm @ spectrum  →  detector-channel response
+      3. Add the calibrated detector noise model (add_detector_noise)
+      4. Apply CCD saturation (apply_saturation)
+
+    Uses the same noise + saturation model as generate_spectrum_batch, just
+    above (the CNN spectrum classifier's generator) -- not plain
+    sqrt(response) Poisson noise, as this function used to. That mismatch
+    mattered: the PFF parameter regressors (train_pff.py,
+    train_pff_bounded_gated.py) trained on the old plain-Poisson version
+    were unfamiliar with saturated shapes every real shot actually has
+    (0-92/200 channels saturation-corrected across the real shots checked
+    this session), which was a large, concrete, and avoidable contributor to
+    how far out-of-distribution real shots looked to those models -- see
+    train_pff_v3_realistic_noise.py.
+
+    Parameters
+    ----------
+    drm           : (200, 200) detector-channel × energy-bin matrix
+    n_samples     : total samples to generate
+    rng           : numpy Generator
+    bump_fraction : fraction of samples that include a Gaussian bump
+    sat_fraction  : fraction of samples clipped to a saturation plateau (see
+                    apply_saturation). Set 0.0 to reproduce the old smooth-only
+                    behaviour.
+    noise_gain / read_frac / mult_frac : detector-noise model knobs, see
+                    add_detector_noise.
+
+    Returns
+    -------
+    X      : (n_samples, 200) float32 — noisy detector responses
+    params : (n_samples, 5)   float32 — PFF parameters [a1, a2, a3, a4, a5]
+    """
+    energy_bins = mev_bin_centers(drm.shape[1])
+    spectra, params = sample_pff_spectra(n_samples, energy_bins, rng, bump_fraction)
+
+    # DRM forward pass: (200, n) = (200, 200) @ (200, n)
+    responses = (drm @ spectra.T).T              # (n_samples, 200)
+
+    X = add_detector_noise(responses, rng, noise_gain, read_frac, mult_frac)
+    X, _ = apply_saturation(X, rng, sat_fraction)
+
+    # L1-normalise each response so training and inference live on the same scale
+    # regardless of the DRM's absolute units vs the real detector's raw units.
+    row_sums = X.sum(axis=1, keepdims=True)
+    X = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
+
+    return X, params.astype(np.float32)

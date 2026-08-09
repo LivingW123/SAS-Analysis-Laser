@@ -1,0 +1,38 @@
+================================================================================
+REAL SHOTS (n=14) vs SYNTHETIC (n=500) signal statistics
+================================================================================
+
+peak_frac:
+  real     : mean=0.037  min=0.010  max=0.085  median=0.040
+  synthetic: mean=0.016  min=0.000  max=0.055  median=0.015
+  fraction of real shots outside synthetic's [min, max] range: 7%
+
+early_frac:
+  real     : mean=0.599  min=0.353  max=0.867  median=0.633
+  synthetic: mean=0.606  min=0.513  max=0.693  median=0.608
+  fraction of real shots outside synthetic's [min, max] range: 43%
+
+sat_frac:
+  real     : mean=0.098  min=0.000  max=0.460  median=0.000
+  synthetic: mean=0.011  min=0.000  max=0.100  median=0.000
+  fraction of real shots outside synthetic's [min, max] range: 29%
+
+Per-shot detail:
+    shot  peak_frac  early_frac  sat_frac
+10084_cv      0.020    0.552440     0.210
+10084_ch      0.055    0.352682     0.000
+11696_cv      0.025    0.785192     0.000
+11696_ch      0.040    0.867043     0.000
+11705_cv      0.025    0.692405     0.000
+11705_ch      0.040    0.694983     0.000
+11707_cv      0.010    0.627900     0.000
+11707_ch      0.045    0.658681     0.000
+11716_cv      0.025    0.523211     0.255
+11716_ch      0.045    0.516165     0.000
+11733_cv      0.085    0.416349     0.460
+11733_ch      0.045    0.404276     0.000
+11698_cv      0.015    0.638702     0.440
+11698_ch      0.040    0.657282     0.000
+
+Saved pff_domain_gap_check.png
+Saved pff_domain_gap_real_shots.csv and pff_domain_gap_synthetic.csv

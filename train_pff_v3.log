@@ -1,0 +1,106 @@
+2026-08-08 15:19:45.132539: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-08-08 15:19:46.627134: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "object"):
+2026-08-08 15:19:50.600963: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+DRM shape: (200, 200)  min=841.643  max=296502384.657
+Data generator: generate_pff_training_data (calibrated noise + saturation)
+Generating 20000 samples (10000 with bump, 10000 without)...
+  Generated in 0.66s
+X shape: (20000, 200)  y shape: (20000, 5)
+Model: "pff_regressor_v2"
++--------------------------------------------------------------------------+
+| Layer (type)        | Output Shape      |    Param # | Connected to      |
+|---------------------+-------------------+------------+-------------------|
+| detector_response   | (None, 200)       |          0 | -                 |
+| (InputLayer)        |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| dense (Dense)       | (None, 512)       |    102,912 | detector_respons… |
+|---------------------+-------------------+------------+-------------------|
+| batch_normalization | (None, 512)       |      2,048 | dense[0][0]       |
+| (BatchNormalizatio… |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| activation          | (None, 512)       |          0 | batch_normalizat… |
+| (Activation)        |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| dense_1 (Dense)     | (None, 256)       |    131,328 | activation[0][0]  |
+|---------------------+-------------------+------------+-------------------|
+| batch_normalizatio… | (None, 256)       |      1,024 | dense_1[0][0]     |
+| (BatchNormalizatio… |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| activation_1        | (None, 256)       |          0 | batch_normalizat… |
+| (Activation)        |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| dense_2 (Dense)     | (None, 128)       |     32,896 | activation_1[0][… |
+|---------------------+-------------------+------------+-------------------|
+| batch_normalizatio… | (None, 128)       |        512 | dense_2[0][0]     |
+| (BatchNormalizatio… |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| activation_2        | (None, 128)       |          0 | batch_normalizat… |
+| (Activation)        |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| a12_logvar_tanh     | (None, 2)         |        258 | activation_2[0][… |
+| (Dense)             |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| a345_logvar_tanh    | (None, 3)         |        387 | activation_2[0][… |
+| (Dense)             |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| a12_mean (Dense)    | (None, 2)         |        258 | activation_2[0][… |
+|---------------------+-------------------+------------+-------------------|
+| a12_logvar          | (None, 2)         |          0 | a12_logvar_tanh[… |
+| (Rescaling)         |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| bump_logit (Dense)  | (None, 1)         |        129 | activation_2[0][… |
+|---------------------+-------------------+------------+-------------------|
+| a345_mean (Dense)   | (None, 3)         |        387 | activation_2[0][… |
+|---------------------+-------------------+------------+-------------------|
+| a345_logvar         | (None, 3)         |          0 | a345_logvar_tanh… |
+| (Rescaling)         |                   |            |                   |
+|---------------------+-------------------+------------+-------------------|
+| pff_params_v2       | (None, 11)        |          0 | a12_mean[0][0],   |
+| (Concatenate)       |                   |            | a12_logvar[0][0], |
+|                     |                   |            | bump_logit[0][0], |
+|                     |                   |            | a345_mean[0][0],  |
+|                     |                   |            | a345_logvar[0][0] |
++--------------------------------------------------------------------------+
+ Total params: 272,139 (1.04 MB)
+ Trainable params: 270,347 (1.03 MB)
+ Non-trainable params: 1,792 (7.00 KB)
+  ep  10 | val_loss 0.31036 | spec_mse 10951.45 | rel_mse 4200.5421 | 1sig cov 54% (bump 38%) | bump_acc 77%
+           all : a1=145.793 | a2=0.189 | a3=7.105 | a4=16.601 | a5=27.124
+           bump: a1=134.988 | a2=0.207 | a3=14.005 | a4=11.229 | a5=24.911
+           max sigma: a1=1021.38 | a2=1.14 | a3=50.04 | a4=127.59 | a5=585.37
+  ep  20 | val_loss 0.37084 | spec_mse 5825.33 | rel_mse 1362.4291 | 1sig cov 52% (bump 36%) | bump_acc 76%
+           all : a1=137.731 | a2=0.168 | a3=7.091 | a4=16.189 | a5=26.168
+           bump: a1=130.890 | a2=0.184 | a3=13.966 | a4=10.705 | a5=24.373
+           max sigma: a1=674.63 | a2=0.60 | a3=51.65 | a4=141.49 | a5=470.64
+  ep  30 | val_loss 0.82184 | spec_mse 6777.56 | rel_mse 1855.1544 | 1sig cov 51% (bump 35%) | bump_acc 74%
+           all : a1=138.610 | a2=0.170 | a3=7.076 | a4=16.272 | a5=26.581
+           bump: a1=131.674 | a2=0.190 | a3=13.869 | a4=10.848 | a5=24.977
+           max sigma: a1=237.97 | a2=0.60 | a3=50.36 | a4=176.19 | a5=558.58
+  ep  40 | val_loss 1.03658 | spec_mse 6968.36 | rel_mse 1910.8897 | 1sig cov 51% (bump 34%) | bump_acc 73%
+           all : a1=139.006 | a2=0.171 | a3=7.079 | a4=16.200 | a5=26.619
+           bump: a1=132.297 | a2=0.191 | a3=13.871 | a4=10.975 | a5=25.018
+           max sigma: a1=193.77 | a2=0.47 | a3=54.06 | a4=193.20 | a5=578.41
+Epoch 44: early stopping
+
+Stopped at epoch 44  (best epoch: 17)
+Training wall time : 148.0s  (3.36s/epoch)
+Best val_loss      : 0.527617
+Spectrum MSE       : 5376.0387  (at best epoch)
+Spectrum rel-MSE   : 1093.629151  (bump region, E>5 MeV)
+Bump classifier acc: 76.7%
+Param   MAE (all)  MAE (bump only)   Max sigma  (at best epoch)
+  a1    147.3750         137.5261      952.89
+  a2      0.1748           0.1863        0.88
+  a3      7.0922          13.9731       48.38
+  a4     16.0701          11.3101       80.42
+  a5     26.3255          24.4919      523.21
+1-sigma coverage   : a1/a2/a3=52% (want ~68%)  a4/a5(bump only)=35%
+Saved model_pff_v3.keras and pff_training_results_v3.json
+
+--- Timing summary ---
+  Data generation   : 0.66s
+  Training          : 148.0s  (44 epochs, 3.36s/epoch)
+  Total wall time   : 150.2s

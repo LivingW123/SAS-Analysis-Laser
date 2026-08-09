@@ -24,3 +24,8 @@ __pycache__/
 !res/drm/200x200.xlsx
 train_spectrum_n10_revert_singlebump.log
 training_history_6param_hybrid_n100.csv
+infer_cnn_n50_pff_ch.log
+infer_cnn_n50_pff_cv.log
+infer_cnn_n50_pff.log
+train_pff_relu_uncertainty.log
+train_pff_restore_original.log
