@@ -61,6 +61,11 @@ SYNTH_SEED = 123
 VERSIONS = [
     ("v1", "model_pff_relu_uncertainty.keras", "pff_training_results_relu_uncertainty.json", False),
     ("v2", "model_pff_v2.keras", "pff_training_results_v2.json", True),
+    # v3 attempts: 20k/patience=40 -> 60k/patience=80 -> 200k/patience=80,
+    # each preserved under its own name to show the delta. v3 itself always
+    # points at the latest attempt.
+    ("v3_a1_20k", "model_pff_v3_attempt1_20k.keras", "pff_training_results_v3_attempt1_20k.json", True),
+    ("v3_a2_60k", "model_pff_v3_attempt2_60k.keras", "pff_training_results_v3_attempt2_60k.json", True),
     ("v3", "model_pff_v3.keras", "pff_training_results_v3.json", True),
 ]
 

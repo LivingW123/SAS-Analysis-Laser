@@ -64,19 +64,24 @@ from train_pff_bounded_gated import (
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-# Config -- was identical to train_pff_bounded_gated.py's (20k/300/40) for a
-# clean single-variable comparison against v2, but that run showed val_loss
-# plateauing almost immediately (EarlyStopping's patience=40 exhausted by
-# epoch 44, i.e. last improvement around epoch 4) and every accuracy/
-# calibration metric landing worse than v2's -- the realistic noise +
-# saturation model makes the per-sample gradient signal noisier, and 20k
-# samples / patience=40 wasn't enough budget to average that out. Scaled up
-# both knobs for a real second attempt rather than accepting the first
-# early-stopped run as final.
+# Config history:
+#   attempt 1 (20k/300/40, identical to train_pff_bounded_gated.py's v2 config):
+#     val_loss plateaued almost immediately (EarlyStopping's patience=40
+#     exhausted by epoch 44, last improvement ~epoch 4); every accuracy/
+#     calibration metric landed worse than v2's.
+#   attempt 2 (60k/500/80, this session's "train more"): every metric
+#     improved substantially over attempt 1 (spectrum rel-MSE ~96x better,
+#     calibration coverage 52/35% -> 75/63% vs the 68% target, real-shot
+#     p(bump) finally varies by shot -- 0.001 to 1.000 -- instead of v2's
+#     flat 1.000 on all 14). But the *best checkpoint was still epoch 4 of
+#     84* -- the gain came from more samples giving a better early optimum,
+#     not from training longer. So pushing N_SAMPLES further (not
+#     epochs/patience, which weren't the bottleneck) is the lever this
+#     session's evidence actually points at.
+#   attempt 3 (this run): N_SAMPLES 60k -> 200k, epochs/patience unchanged
+#     since attempt 2 showed they weren't what mattered.
 XLSX_PATH     = "res/drm/200x200.xlsx"
-N_SAMPLES     = 60_000   # 3x -- more samples per gradient step averages out
-                         # the noisier per-sample loss from the realistic
-                         # noise/saturation model
+N_SAMPLES     = 200_000
 BUMP_FRACTION = 0.5
 MAX_EPOCHS    = 500
 BATCH_SIZE    = 64

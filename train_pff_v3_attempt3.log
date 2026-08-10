@@ -1,14 +1,14 @@
-2026-08-09 14:34:24.720119: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-08-09 14:34:56.818544: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-08-09 14:43:12.603905: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-08-09 14:43:14.234724: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
 C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
   if not hasattr(np, "object"):
-2026-08-09 14:35:26.684821: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+2026-08-09 14:43:26.900652: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
 DRM shape: (200, 200)  min=841.643  max=296502384.657
 Data generator: generate_pff_training_data (calibrated noise + saturation)
-Generating 60000 samples (30000 with bump, 30000 without)...
-  Generated in 1.03s
-X shape: (60000, 200)  y shape: (60000, 5)
+Generating 200000 samples (100000 with bump, 100000 without)...
+  Generated in 8.49s
+X shape: (200000, 200)  y shape: (200000, 5)
 Model: "pff_regressor_v2"
 +--------------------------------------------------------------------------+
 | Layer (type)        | Output Shape      |    Param # | Connected to      |
@@ -67,56 +67,56 @@ Model: "pff_regressor_v2"
  Total params: 272,139 (1.04 MB)
  Trainable params: 270,347 (1.03 MB)
  Non-trainable params: 1,792 (7.00 KB)
-  ep  10 | val_loss -1.48841 | spec_mse 2263.01 | rel_mse 109.0026 | 1sig cov 69% (bump 50%) | bump_acc 77%
-           all : a1=116.144 | a2=0.116 | a3=5.146 | a4=14.088 | a5=21.365
-           bump: a1=106.246 | a2=0.141 | a3=6.576 | a4=8.275 | a5=19.502
-           max sigma: a1=401.78 | a2=0.31 | a3=20.90 | a4=15.54 | a5=30.67
-  ep  20 | val_loss -0.09620 | spec_mse 2992.33 | rel_mse 238.9668 | 1sig cov 62% (bump 40%) | bump_acc 74%
-           all : a1=138.258 | a2=0.122 | a3=5.410 | a4=14.662 | a5=24.458
-           bump: a1=118.552 | a2=0.150 | a3=6.867 | a4=9.474 | a5=22.754
-           max sigma: a1=735.80 | a2=0.34 | a3=20.09 | a4=26.65 | a5=28.53
-  ep  30 | val_loss 0.69249 | spec_mse 3378.74 | rel_mse 330.7447 | 1sig cov 59% (bump 36%) | bump_acc 72%
-           all : a1=144.772 | a2=0.126 | a3=5.605 | a4=15.416 | a5=26.208
-           bump: a1=127.300 | a2=0.156 | a3=7.322 | a4=10.297 | a5=24.733
-           max sigma: a1=2023.86 | a2=0.34 | a3=20.05 | a4=22.14 | a5=14.11
-  ep  40 | val_loss 1.00788 | spec_mse 3930.14 | rel_mse 505.2718 | 1sig cov 58% (bump 34%) | bump_acc 71%
-           all : a1=141.524 | a2=0.127 | a3=5.700 | a4=15.380 | a5=27.765
-           bump: a1=131.482 | a2=0.160 | a3=7.564 | a4=10.791 | a5=25.986
-           max sigma: a1=2219.82 | a2=0.28 | a3=19.78 | a4=14.35 | a5=12.90
-  ep  50 | val_loss 1.48484 | spec_mse 4314.37 | rel_mse 614.2249 | 1sig cov 57% (bump 34%) | bump_acc 71%
-           all : a1=144.584 | a2=0.130 | a3=5.698 | a4=15.529 | a5=28.809
-           bump: a1=134.591 | a2=0.163 | a3=7.692 | a4=10.877 | a5=26.979
-           max sigma: a1=1935.90 | a2=0.24 | a3=18.49 | a4=10.09 | a5=12.86
-  ep  60 | val_loss 1.77527 | spec_mse 4423.68 | rel_mse 636.7943 | 1sig cov 57% (bump 33%) | bump_acc 71%
-           all : a1=146.529 | a2=0.131 | a3=5.720 | a4=15.722 | a5=29.158
-           bump: a1=135.828 | a2=0.165 | a3=7.780 | a4=11.042 | a5=27.384
-           max sigma: a1=1467.14 | a2=0.21 | a3=18.41 | a4=9.20 | a5=12.86
-  ep  70 | val_loss 1.88157 | spec_mse 4394.05 | rel_mse 622.9302 | 1sig cov 57% (bump 33%) | bump_acc 71%
-           all : a1=146.459 | a2=0.132 | a3=5.779 | a4=15.842 | a5=29.175
-           bump: a1=137.105 | a2=0.165 | a3=7.755 | a4=11.079 | a5=27.474
-           max sigma: a1=1343.95 | a2=0.19 | a3=18.85 | a4=9.06 | a5=12.86
-  ep  80 | val_loss 1.98348 | spec_mse 4435.53 | rel_mse 627.4788 | 1sig cov 57% (bump 33%) | bump_acc 70%
-           all : a1=146.780 | a2=0.133 | a3=5.828 | a4=15.899 | a5=29.261
-           bump: a1=138.344 | a2=0.166 | a3=7.764 | a4=11.102 | a5=27.619
-           max sigma: a1=1211.75 | a2=0.18 | a3=18.87 | a4=8.91 | a5=12.86
-Epoch 84: early stopping
+  ep  10 | val_loss -1.89916 | spec_mse 1989.92 | rel_mse 11.6085 | 1sig cov 75% (bump 58%) | bump_acc 77%
+           all : a1=109.030 | a2=0.101 | a3=5.169 | a4=13.299 | a5=19.867
+           bump: a1=102.406 | a2=0.124 | a3=6.261 | a4=7.665 | a5=18.251
+           max sigma: a1=191.34 | a2=0.39 | a3=16.50 | a4=48.42 | a5=39.42
+  ep  20 | val_loss -1.44530 | spec_mse 2110.74 | rel_mse 21.2251 | 1sig cov 72% (bump 51%) | bump_acc 74%
+           all : a1=113.545 | a2=0.104 | a3=5.355 | a4=14.181 | a5=22.050
+           bump: a1=107.183 | a2=0.129 | a3=6.575 | a4=8.367 | a5=20.000
+           max sigma: a1=220.99 | a2=0.53 | a3=16.17 | a4=134.52 | a5=621.85
+  ep  30 | val_loss -0.97853 | spec_mse 2283.43 | rel_mse 58.5888 | 1sig cov 69% (bump 49%) | bump_acc 72%
+           all : a1=116.900 | a2=0.105 | a3=5.485 | a4=14.036 | a5=23.063
+           bump: a1=111.193 | a2=0.133 | a3=7.052 | a4=8.714 | a5=21.021
+           max sigma: a1=261.73 | a2=0.46 | a3=16.31 | a4=288.40 | a5=661.90
+  ep  40 | val_loss -0.53571 | spec_mse 2435.79 | rel_mse 88.0030 | 1sig cov 67% (bump 48%) | bump_acc 71%
+           all : a1=119.930 | a2=0.106 | a3=5.602 | a4=14.118 | a5=23.907
+           bump: a1=113.231 | a2=0.135 | a3=7.231 | a4=8.903 | a5=21.783
+           max sigma: a1=297.36 | a2=0.50 | a3=16.66 | a4=340.26 | a5=689.34
+  ep  50 | val_loss -0.16716 | spec_mse 2505.07 | rel_mse 99.0042 | 1sig cov 66% (bump 47%) | bump_acc 71%
+           all : a1=121.490 | a2=0.107 | a3=5.677 | a4=14.270 | a5=24.374
+           bump: a1=114.592 | a2=0.136 | a3=7.363 | a4=9.001 | a5=22.271
+           max sigma: a1=325.13 | a2=0.50 | a3=16.57 | a4=353.70 | a5=695.45
+  ep  60 | val_loss 0.09078 | spec_mse 2549.09 | rel_mse 108.1453 | 1sig cov 66% (bump 47%) | bump_acc 71%
+           all : a1=122.151 | a2=0.107 | a3=5.680 | a4=14.413 | a5=24.651
+           bump: a1=115.447 | a2=0.136 | a3=7.444 | a4=9.053 | a5=22.590
+           max sigma: a1=344.43 | a2=0.49 | a3=15.87 | a4=354.49 | a5=697.30
+  ep  70 | val_loss 0.26903 | spec_mse 2569.44 | rel_mse 111.9564 | 1sig cov 66% (bump 47%) | bump_acc 71%
+           all : a1=122.386 | a2=0.107 | a3=5.725 | a4=14.438 | a5=24.832
+           bump: a1=115.988 | a2=0.136 | a3=7.468 | a4=9.083 | a5=22.783
+           max sigma: a1=365.36 | a2=0.48 | a3=15.77 | a4=354.64 | a5=696.85
+  ep  80 | val_loss 0.41117 | spec_mse 2596.78 | rel_mse 117.5728 | 1sig cov 65% (bump 47%) | bump_acc 70%
+           all : a1=122.874 | a2=0.107 | a3=5.746 | a4=14.490 | a5=25.001
+           bump: a1=116.493 | a2=0.137 | a3=7.508 | a4=9.109 | a5=22.957
+           max sigma: a1=381.42 | a2=0.48 | a3=15.91 | a4=354.66 | a5=697.38
+Epoch 85: early stopping
 
-Stopped at epoch 84  (best epoch: 4)
-Training wall time : 218.2s  (2.60s/epoch)
-Best val_loss      : -1.979189
-Spectrum MSE       : 1863.5080  (at best epoch)
-Spectrum rel-MSE   : 11.389070  (bump region, E>5 MeV)
+Stopped at epoch 85  (best epoch: 5)
+Training wall time : 2651.1s  (31.19s/epoch)
+Best val_loss      : -2.086628
+Spectrum MSE       : 1941.0236  (at best epoch)
+Spectrum rel-MSE   : 7.475682  (bump region, E>5 MeV)
 Bump classifier acc: 77.9%
 Param   MAE (all)  MAE (bump only)   Max sigma  (at best epoch)
-  a1    107.3628         100.1981      256.77
-  a2      0.1072           0.1281        0.29
-  a3      5.0329           6.6264       21.85
-  a4     13.0310           7.3421       13.85
-  a5     18.5955          17.6714       30.43
-1-sigma coverage   : a1/a2/a3=75% (want ~68%)  a4/a5(bump only)=63%
+  a1    105.9113          99.3944      176.64
+  a2      0.0977           0.1201        0.36
+  a3      5.2692           6.0269       17.97
+  a4     12.5206           7.1595       24.20
+  a5     18.2213          17.2154       29.10
+1-sigma coverage   : a1/a2/a3=78% (want ~68%)  a4/a5(bump only)=65%
 Saved model_pff_v3.keras and pff_training_results_v3.json
 
 --- Timing summary ---
-  Data generation   : 1.03s
-  Training          : 218.2s  (84 epochs, 2.60s/epoch)
-  Total wall time   : 221.3s
+  Data generation   : 8.49s
+  Training          : 2651.1s  (85 epochs, 31.19s/epoch)
+  Total wall time   : 2661.5s

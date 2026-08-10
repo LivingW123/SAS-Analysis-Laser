@@ -102,8 +102,11 @@ OUT_TAG        = os.environ.get("CNN_OUT_TAG", "")
 #   v3 -- model_pff_v3.keras (train_pff_v3_realistic_noise.py): same
 #         architecture as v2, trained on generate_pff_training_data's
 #         calibrated-noise + CCD-saturation generator instead of v1/v2's
-#         plain-Poisson one.
-PFF_VERSION = os.environ.get("PFF_VERSION", "v1")
+#         plain-Poisson one. Best of the three on every metric checked this
+#         session (real-shot sigma actually varies by shot instead of
+#         collapsing to a constant, best calibration coverage, best MAE) --
+#         default from here on.
+PFF_VERSION = os.environ.get("PFF_VERSION", "v3")
 if PFF_VERSION == "v3":
     PFF_MODEL_PATH = "model_pff_v3.keras"
     PFF_JSON       = "pff_training_results_v3.json"
