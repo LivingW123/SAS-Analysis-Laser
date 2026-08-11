@@ -78,10 +78,31 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 #     not from training longer. So pushing N_SAMPLES further (not
 #     epochs/patience, which weren't the bottleneck) is the lever this
 #     session's evidence actually points at.
-#   attempt 3 (this run): N_SAMPLES 60k -> 200k, epochs/patience unchanged
-#     since attempt 2 showed they weren't what mattered.
+#   attempt 3 (60k -> 200k, epochs/patience unchanged): improved again on
+#     every metric (best of the three: real-shot sigma variation up
+#     substantially on every parameter including a5's recovery from
+#     attempt 2's collapse, coverage 65%/47% vs the 68% target, best MAE).
+#     Cost: 2651s wall time vs attempt 2's 218s -- a ~12x time cost for 3.3x
+#     more data, though at least part of that jump is likely ordinary
+#     run-to-run system-load variance (this session already saw a 3.8x
+#     per-epoch swing between two nominally-identical 20k runs), not a
+#     clean scaling law -- worth treating any extrapolation from just these
+#     two points with real skepticism.
+#   attempt 4 (200k -> 500k): 5928s wall time (200k->500k scaled ~linearly
+#     in time, 2.5x samples for 2.23x time -- unlike attempt 3's jump,
+#     supporting that attempt 3's disproportionate cost was mostly
+#     run-to-run noise, not a real superlinear law). Modest, mixed
+#     improvement over attempt 3: a3/a4/a5 real-shot sigma variation up
+#     substantially (a5 especially, 22x), a1/a2 down slightly; synthetic
+#     MAE better on 4/5 params; calibration coverage 65%->72% (now slightly
+#     over- rather than under-covering, still far closer to 68% than v1/v2
+#     ever got). Diminishing returns clearly setting in vs. the 60k->200k
+#     jump, but still net positive.
+#   attempt 5 (this run): continuing per explicit request to fill a
+#     multi-hour budget; ~linear extrapolation from attempt 4 puts this
+#     around 3+ hours on its own.
 XLSX_PATH     = "res/drm/200x200.xlsx"
-N_SAMPLES     = 200_000
+N_SAMPLES     = 1_000_000
 BUMP_FRACTION = 0.5
 MAX_EPOCHS    = 500
 BATCH_SIZE    = 64
