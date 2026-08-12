@@ -1,0 +1,119 @@
+2026-08-11 19:35:18.858108: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-08-11 19:35:20.514192: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "object"):
+2026-08-11 19:35:21.942570: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+WARNING:tensorflow:5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000002189044DD00> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+WARNING:tensorflow:6 out of the last 6 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000002189044E480> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+  (no dense baseline for n_bins=50 — plotting CNN alone)
+Loading 5-member PFF ensemble...
+
+=== Shot 10084_cv  (n_bins=50) ===
+  42/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV ( 5.08%)  resid RMS 0.001758 (23.4% of signal)
+  PFF fit [ensemble, 5 members]: a1=194.44+/-133.98 (epi 3%) | a2=0.11+/-0.16 (epi 2%) | a3=12.48+/-13.68 (epi 2%) | a4=30.38+/-8.37 (epi 4%) | a5=46.75+/-19.68 (epi 3%)
+             p(bump) = 0.779 +/- 0.091
+             bump DETECTED  (centre 30.4+/-8.4 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_10084_n50_cv_ensemble.png
+
+=== Shot 10084_ch  (n_bins=50) ===
+  CNN 5x48 : peak   38 MeV ( 6.84%)  resid RMS 0.004474 (79.9% of signal)
+  PFF fit [ensemble, 5 members]: a1=145.43+/-120.24 (epi 57%) | a2=0.62+/-0.19 (epi 42%) | a3=17.20+/-13.78 (epi 3%) | a4=37.91+/-15.98 (epi 83%) | a5=39.78+/-22.83 (epi 60%)
+             p(bump) = 0.991 +/- 0.017
+             bump DETECTED  (centre 37.9+/-16.0 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_10084_n50_ch_ensemble.png
+
+=== Shot 11696_cv  (n_bins=50) ===
+  0/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV (43.14%)  resid RMS 0.006418 (50.6% of signal)
+  PFF fit [ensemble, 5 members]: a1=185.84+/-174.51 (epi 56%) | a2=0.90+/-0.16 (epi 32%) | a3=0.00+/-1.89* (epi 0%) | a4=9.79+/-18.74 (epi 88%) | a5=62.09+/-39.55 (epi 89%)
+             p(bump) = 0.020 +/- 0.039
+             * = clipped to the physical training bound (a3)
+             bump NOT detected
+  Saved cnn_infer_ensemble\cnn_infer_11696_n50_cv_ensemble.png
+
+=== Shot 11696_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV (45.76%)  resid RMS 0.007546 (54.0% of signal)
+  PFF fit [ensemble, 5 members]: a1=125.08+/-165.84 (epi 70%) | a2=1.00+/-0.13* (epi 0%) | a3=0.05+/-1.22 (epi 1%) | a4=1.00+/-6.50* (epi 0%) | a5=100.00+/-13.08* (epi 0%)
+             p(bump) = 0.005 +/- 0.010
+             * = clipped to the physical training bound (a2, a4, a5)
+             bump NOT detected
+  Saved cnn_infer_ensemble\cnn_infer_11696_n50_ch_ensemble.png
+
+=== Shot 11705_cv  (n_bins=50) ===
+  0/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV (29.71%)  resid RMS 0.003912 (38.0% of signal)
+  PFF fit [ensemble, 5 members]: a1=294.39+/-122.44 (epi 53%) | a2=0.72+/-0.22 (epi 58%) | a3=5.33+/-13.25 (epi 16%) | a4=16.03+/-14.58 (epi 80%) | a5=45.33+/-23.90 (epi 71%)
+             p(bump) = 0.689 +/- 0.394
+             bump DETECTED  (centre 16.0+/-14.6 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11705_n50_cv_ensemble.png
+
+=== Shot 11705_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV (29.86%)  resid RMS 0.003771 (36.0% of signal)
+  PFF fit [ensemble, 5 members]: a1=239.45+/-141.65 (epi 46%) | a2=0.72+/-0.17 (epi 35%) | a3=6.50+/-11.74 (epi 12%) | a4=20.23+/-14.65 (epi 80%) | a5=40.71+/-18.74 (epi 52%)
+             p(bump) = 0.585 +/- 0.378
+             bump DETECTED  (centre 20.2+/-14.7 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11705_n50_ch_ensemble.png
+
+=== Shot 11707_cv  (n_bins=50) ===
+  0/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV (20.56%)  resid RMS 0.002672 (29.6% of signal)
+  PFF fit [ensemble, 5 members]: a1=177.38+/-122.42 (epi 37%) | a2=0.36+/-0.19 (epi 21%) | a3=11.45+/-13.41 (epi 9%) | a4=21.15+/-8.20 (epi 36%) | a5=44.56+/-17.66 (epi 33%)
+             p(bump) = 0.785 +/- 0.265
+             bump DETECTED  (centre 21.2+/-8.2 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11707_n50_cv_ensemble.png
+
+=== Shot 11707_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV (23.41%)  resid RMS 0.002773 (28.6% of signal)
+  PFF fit [ensemble, 5 members]: a1=208.07+/-138.21 (epi 7%) | a2=0.37+/-0.21 (epi 10%) | a3=10.62+/-13.32 (epi 18%) | a4=28.99+/-11.94 (epi 18%) | a5=48.52+/-23.68 (epi 30%)
+             p(bump) = 0.701 +/- 0.361
+             bump DETECTED  (centre 29.0+/-11.9 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11707_n50_ch_ensemble.png
+
+=== Shot 11716_cv  (n_bins=50) ===
+  51/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV (17.12%)  resid RMS 0.002080 (27.3% of signal)
+  PFF fit [ensemble, 5 members]: a1=99.36+/-103.88 (epi 3%) | a2=0.38+/-0.21 (epi 4%) | a3=15.22+/-13.67 (epi 0%) | a4=26.71+/-7.25 (epi 19%) | a5=45.38+/-19.03 (epi 11%)
+             p(bump) = 0.953 +/- 0.065
+             bump DETECTED  (centre 26.7+/-7.2 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11716_n50_cv_ensemble.png
+
+=== Shot 11716_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV (24.60%)  resid RMS 0.002079 (26.9% of signal)
+  PFF fit [ensemble, 5 members]: a1=95.31+/-105.14 (epi 21%) | a2=0.48+/-0.23 (epi 12%) | a3=16.58+/-13.62 (epi 1%) | a4=31.59+/-7.66 (epi 28%) | a5=51.54+/-19.67 (epi 3%)
+             p(bump) = 0.990 +/- 0.016
+             bump DETECTED  (centre 31.6+/-7.7 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11716_n50_ch_ensemble.png
+
+=== Shot 11733_cv  (n_bins=50) ===
+  92/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV ( 6.18%)  resid RMS 0.003353 (54.8% of signal)
+  PFF fit [ensemble, 5 members]: a1=94.65+/-90.69 (epi 8%) | a2=0.44+/-0.18 (epi 4%) | a3=16.99+/-13.63 (epi 0%) | a4=40.83+/-8.24 (epi 38%) | a5=44.59+/-18.94 (epi 9%)
+             p(bump) = 0.986 +/- 0.025
+             bump DETECTED  (centre 40.8+/-8.2 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11733_n50_cv_ensemble.png
+
+=== Shot 11733_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV ( 7.60%)  resid RMS 0.003414 (57.4% of signal)
+  PFF fit [ensemble, 5 members]: a1=112.39+/-89.13 (epi 9%) | a2=0.51+/-0.17 (epi 4%) | a3=17.40+/-13.57 (epi 0%) | a4=39.66+/-7.84 (epi 31%) | a5=43.05+/-16.67 (epi 4%)
+             p(bump) = 0.998 +/- 0.004
+             bump DETECTED  (centre 39.7+/-7.8 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11733_n50_ch_ensemble.png
+
+=== Shot 11698_cv  (n_bins=50) ===
+  88/200 channels are saturation-corrected (imputed, not real measurements)
+  CNN 5x48 : peak    0 MeV ( 8.71%)  resid RMS 0.002051 (23.8% of signal)
+  PFF fit [ensemble, 5 members]: a1=214.54+/-129.57 (epi 6%) | a2=0.13+/-0.16 (epi 26%) | a3=7.74+/-12.29 (epi 9%) | a4=27.88+/-12.83 (epi 17%) | a5=54.03+/-22.21 (epi 10%)
+             p(bump) = 0.535 +/- 0.281
+             bump DETECTED  (centre 27.9+/-12.8 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11698_n50_cv_ensemble.png
+
+=== Shot 11698_ch  (n_bins=50) ===
+  CNN 5x48 : peak    0 MeV (22.47%)  resid RMS 0.002083 (22.8% of signal)
+  PFF fit [ensemble, 5 members]: a1=78.37+/-85.44 (epi 4%) | a2=0.38+/-0.16 (epi 6%) | a3=16.85+/-13.54 (epi 0%) | a4=41.55+/-7.92 (epi 33%) | a5=44.68+/-20.34 (epi 24%)
+             p(bump) = 0.999 +/- 0.001
+             bump DETECTED  (centre 41.5+/-7.9 MeV)
+  Saved cnn_infer_ensemble\cnn_infer_11698_n50_ch_ensemble.png
+
+All figures saved to cnn_infer_ensemble/
