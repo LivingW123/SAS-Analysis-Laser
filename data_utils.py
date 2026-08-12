@@ -19,7 +19,7 @@ PFF_PARAM_SAMPLING = np.array([
     [150, 100, 50, 250],
     [0.3, 1, 0.01, 2],
     [20, 10, 0, 50],
-    [20, 25, 1, 49],
+    [20, 25, 1, 75],
     [0.5, 1, 1e-6, 10],
     [100, 500, 1e-6, 10000]
 ], dtype=np.float64)
@@ -35,7 +35,7 @@ PFF_PARAM_BOUNDS = np.array([
     [0.1,  500.0],   # a1
     [0.01,   1.0],   # a2
     [0.0,  100.0],   # a3
-    [1.0,   49.0],   # a4
+    [1.0,   75.0],   # a4
     [1e-6,  10.0],   # a5
     [1e-6, 1.0e4],   # a6
 ])
@@ -308,8 +308,8 @@ def normalize_apply(
 # clipped shots poorly. This adds that shape to a subset of samples.
 
 SAT_FRACTION = 0.0
-SAT_CEIL_LOW = 0.70
-SAT_CEIL_HIGH = 0.98
+SAT_CEIL_LOW = 0.90
+SAT_CEIL_HIGH = 0.99
 
 
 def apply_saturation(
