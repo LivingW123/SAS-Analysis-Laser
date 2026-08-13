@@ -1,127 +1,142 @@
 C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
   if not hasattr(np, "object"):
-WARNING:tensorflow:5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000002BD62E3F4C0> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+WARNING:tensorflow:5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000001D2843574C0> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
 Loaded 5/5 ensemble members
 
 ====================================================================================================
 REAL SHOTS: ensemble mean/sigma (total = aleatoric + epistemic), physical units
 ====================================================================================================
 
---- 10084_cv ---  p(bump)=0.779+/-0.091
-    a1 =   194.44  sigma_total=  133.98  sigma_epistemic=   24.86  (3% of variance)
-    a2 =     0.11  sigma_total=    0.16  sigma_epistemic=    0.02  (2% of variance)
-    a3 =    12.48  sigma_total=   13.68  sigma_epistemic=    1.73  (2% of variance)
-    a4 =    30.38  sigma_total=    8.37  sigma_epistemic=    1.75  (4% of variance)
-    a5 =    46.75  sigma_total=   19.68  sigma_epistemic=    3.67  (3% of variance)
+--- 10084_cv ---  p(bump)=0.778+/-0.203
+    a1 =   202.08  sigma_total=  133.29  sigma_epistemic=   24.16  (3% of variance)
+    a2 =     0.12  sigma_total=    0.17  sigma_epistemic=    0.04  (6% of variance)
+    a3 =    12.56  sigma_total=   13.70  sigma_epistemic=    3.39  (6% of variance)
+    a4 =    30.10  sigma_total=    9.50  sigma_epistemic=    3.03  (10% of variance)
+    a5 =     1.13  sigma_total=    0.66  sigma_epistemic=    0.04  (0% of variance)
+    a6 =   414.13  sigma_total=  206.44  sigma_epistemic=   56.56  (8% of variance)
 
---- 10084_ch ---  p(bump)=0.991+/-0.017
-    a1 =   145.43  sigma_total=  120.24  sigma_epistemic=   90.78  (57% of variance)
-    a2 =     0.62  sigma_total=    0.19  sigma_epistemic=    0.12  (42% of variance)
-    a3 =    17.20  sigma_total=   13.78  sigma_epistemic=    2.30  (3% of variance)
-    a4 =    37.91  sigma_total=   15.98  sigma_epistemic=   14.60  (83% of variance)
-    a5 =    39.78  sigma_total=   22.83  sigma_epistemic=   17.72  (60% of variance)
+--- 10084_ch ---  p(bump)=0.812+/-0.320
+    a1 =    26.70  sigma_total=   86.22  sigma_epistemic=   26.46  (9% of variance)
+    a2 =     0.67  sigma_total=    0.17  sigma_epistemic=    0.10  (36% of variance)
+    a3 =    14.44  sigma_total=   14.52  sigma_epistemic=    7.28  (25% of variance)
+    a4 =    37.86  sigma_total=   11.48  sigma_epistemic=    9.47  (68% of variance)
+    a5 =     0.85  sigma_total=    0.83  sigma_epistemic=    0.50  (36% of variance)
+    a6 =   347.18  sigma_total=  231.15  sigma_epistemic=   97.30  (18% of variance)
 
---- 11696_cv ---  p(bump)=0.020+/-0.039
-    a1 =   185.84  sigma_total=  174.51  sigma_epistemic=  130.72  (56% of variance)
-    a2 =     0.90  sigma_total=    0.16  sigma_epistemic=    0.09  (32% of variance)
-    a3 =     0.00  sigma_total=    1.89  sigma_epistemic=    0.00  (0% of variance)
-    a4 =     9.79  sigma_total=   18.74  sigma_epistemic=   17.58  (88% of variance)
-    a5 =    62.09  sigma_total=   39.55  sigma_epistemic=   37.40  (89% of variance)
-
---- 11696_ch ---  p(bump)=0.005+/-0.010
-    a1 =   125.08  sigma_total=  165.84  sigma_epistemic=  139.07  (70% of variance)
-    a2 =     1.00  sigma_total=    0.13  sigma_epistemic=    0.00  (0% of variance)
-    a3 =     0.05  sigma_total=    1.22  sigma_epistemic=    0.11  (1% of variance)
+--- 11696_cv ---  p(bump)=0.000+/-0.000
+    a1 =    63.99  sigma_total=  108.95  sigma_epistemic=   47.64  (19% of variance)
+    a2 =     0.94  sigma_total=    0.16  sigma_epistemic=    0.09  (32% of variance)
+    a3 =     0.00  sigma_total=    0.04  sigma_epistemic=    0.00  (0% of variance)
     a4 =     1.00  sigma_total=    6.50  sigma_epistemic=    0.00  (0% of variance)
-    a5 =   100.00  sigma_total=   13.08  sigma_epistemic=    0.00  (0% of variance)
+    a5 =     0.49  sigma_total=    0.78  sigma_epistemic=    0.41  (28% of variance)
+    a6 =   391.60  sigma_total=  342.66  sigma_epistemic=  310.87  (82% of variance)
 
---- 11705_cv ---  p(bump)=0.689+/-0.394
-    a1 =   294.39  sigma_total=  122.44  sigma_epistemic=   89.37  (53% of variance)
-    a2 =     0.72  sigma_total=    0.22  sigma_epistemic=    0.17  (58% of variance)
-    a3 =     5.33  sigma_total=   13.25  sigma_epistemic=    5.34  (16% of variance)
-    a4 =    16.03  sigma_total=   14.58  sigma_epistemic=   13.05  (80% of variance)
-    a5 =    45.33  sigma_total=   23.90  sigma_epistemic=   20.11  (71% of variance)
+--- 11696_ch ---  p(bump)=0.030+/-0.061
+    a1 =    50.47  sigma_total=  187.47  sigma_epistemic=   89.47  (23% of variance)
+    a2 =     0.92  sigma_total=    0.14  sigma_epistemic=    0.05  (13% of variance)
+    a3 =     0.97  sigma_total=    5.96  sigma_epistemic=    1.94  (11% of variance)
+    a4 =     1.00  sigma_total=    6.50  sigma_epistemic=    0.00  (0% of variance)
+    a5 =     0.99  sigma_total=    1.21  sigma_epistemic=    1.01  (70% of variance)
+    a6 =   314.85  sigma_total= 3068.55  sigma_epistemic=  392.43  (2% of variance)
 
---- 11705_ch ---  p(bump)=0.585+/-0.378
-    a1 =   239.45  sigma_total=  141.65  sigma_epistemic=   96.43  (46% of variance)
-    a2 =     0.72  sigma_total=    0.17  sigma_epistemic=    0.10  (35% of variance)
-    a3 =     6.50  sigma_total=   11.74  sigma_epistemic=    4.06  (12% of variance)
-    a4 =    20.23  sigma_total=   14.65  sigma_epistemic=   13.13  (80% of variance)
-    a5 =    40.71  sigma_total=   18.74  sigma_epistemic=   13.45  (52% of variance)
+--- 11705_cv ---  p(bump)=1.000+/-0.000
+    a1 =   237.55  sigma_total=   96.03  sigma_epistemic=   56.51  (35% of variance)
+    a2 =     0.75  sigma_total=    0.22  sigma_epistemic=    0.17  (61% of variance)
+    a3 =    10.26  sigma_total=   14.62  sigma_epistemic=    5.54  (14% of variance)
+    a4 =    17.74  sigma_total=    8.61  sigma_epistemic=    5.65  (43% of variance)
+    a5 =     1.01  sigma_total=    0.72  sigma_epistemic=    0.28  (15% of variance)
+    a6 =   482.57  sigma_total=  200.88  sigma_epistemic=  133.78  (44% of variance)
 
---- 11707_cv ---  p(bump)=0.785+/-0.265
-    a1 =   177.38  sigma_total=  122.42  sigma_epistemic=   74.17  (37% of variance)
-    a2 =     0.36  sigma_total=    0.19  sigma_epistemic=    0.08  (21% of variance)
-    a3 =    11.45  sigma_total=   13.41  sigma_epistemic=    4.02  (9% of variance)
-    a4 =    21.15  sigma_total=    8.20  sigma_epistemic=    4.95  (36% of variance)
-    a5 =    44.56  sigma_total=   17.66  sigma_epistemic=   10.12  (33% of variance)
+--- 11705_ch ---  p(bump)=0.997+/-0.006
+    a1 =   309.80  sigma_total=  137.18  sigma_epistemic=   96.32  (49% of variance)
+    a2 =     0.72  sigma_total=    0.21  sigma_epistemic=    0.16  (58% of variance)
+    a3 =     9.14  sigma_total=   14.15  sigma_epistemic=    4.13  (9% of variance)
+    a4 =    24.88  sigma_total=   10.03  sigma_epistemic=    7.64  (58% of variance)
+    a5 =     0.88  sigma_total=    0.70  sigma_epistemic=    0.22  (10% of variance)
+    a6 =   468.63  sigma_total=  324.11  sigma_epistemic=  275.28  (72% of variance)
 
---- 11707_ch ---  p(bump)=0.701+/-0.361
-    a1 =   208.07  sigma_total=  138.21  sigma_epistemic=   36.87  (7% of variance)
-    a2 =     0.37  sigma_total=    0.21  sigma_epistemic=    0.07  (10% of variance)
-    a3 =    10.62  sigma_total=   13.32  sigma_epistemic=    5.62  (18% of variance)
-    a4 =    28.99  sigma_total=   11.94  sigma_epistemic=    5.03  (18% of variance)
-    a5 =    48.52  sigma_total=   23.68  sigma_epistemic=   12.93  (30% of variance)
+--- 11707_cv ---  p(bump)=0.836+/-0.325
+    a1 =   188.43  sigma_total=  137.34  sigma_epistemic=   91.54  (44% of variance)
+    a2 =     0.35  sigma_total=    0.25  sigma_epistemic=    0.12  (24% of variance)
+    a3 =    12.29  sigma_total=   13.55  sigma_epistemic=    4.90  (13% of variance)
+    a4 =    17.90  sigma_total=    9.39  sigma_epistemic=    6.77  (52% of variance)
+    a5 =     1.00  sigma_total=    0.66  sigma_epistemic=    0.05  (1% of variance)
+    a6 =   381.96  sigma_total=  195.72  sigma_epistemic=   64.95  (11% of variance)
 
---- 11716_cv ---  p(bump)=0.953+/-0.065
-    a1 =    99.36  sigma_total=  103.88  sigma_epistemic=   17.97  (3% of variance)
-    a2 =     0.38  sigma_total=    0.21  sigma_epistemic=    0.04  (4% of variance)
-    a3 =    15.22  sigma_total=   13.67  sigma_epistemic=    0.95  (0% of variance)
-    a4 =    26.71  sigma_total=    7.25  sigma_epistemic=    3.17  (19% of variance)
-    a5 =    45.38  sigma_total=   19.03  sigma_epistemic=    6.24  (11% of variance)
+--- 11707_ch ---  p(bump)=0.985+/-0.017
+    a1 =   247.87  sigma_total=  133.54  sigma_epistemic=   50.34  (14% of variance)
+    a2 =     0.38  sigma_total=    0.19  sigma_epistemic=    0.07  (12% of variance)
+    a3 =    15.04  sigma_total=   13.58  sigma_epistemic=    0.77  (0% of variance)
+    a4 =    33.85  sigma_total=    7.85  sigma_epistemic=    2.28  (8% of variance)
+    a5 =     1.05  sigma_total=    0.67  sigma_epistemic=    0.09  (2% of variance)
+    a6 =   420.28  sigma_total=  209.07  sigma_epistemic=   54.15  (7% of variance)
 
---- 11716_ch ---  p(bump)=0.990+/-0.016
-    a1 =    95.31  sigma_total=  105.14  sigma_epistemic=   48.15  (21% of variance)
-    a2 =     0.48  sigma_total=    0.23  sigma_epistemic=    0.08  (12% of variance)
-    a3 =    16.58  sigma_total=   13.62  sigma_epistemic=    1.11  (1% of variance)
-    a4 =    31.59  sigma_total=    7.66  sigma_epistemic=    4.04  (28% of variance)
-    a5 =    51.54  sigma_total=   19.67  sigma_epistemic=    3.18  (3% of variance)
+--- 11716_cv ---  p(bump)=0.982+/-0.029
+    a1 =   108.79  sigma_total=  116.15  sigma_epistemic=   25.31  (5% of variance)
+    a2 =     0.33  sigma_total=    0.21  sigma_epistemic=    0.05  (6% of variance)
+    a3 =    16.39  sigma_total=   13.60  sigma_epistemic=    0.74  (0% of variance)
+    a4 =    27.44  sigma_total=    6.67  sigma_epistemic=    1.31  (4% of variance)
+    a5 =     1.07  sigma_total=    0.67  sigma_epistemic=    0.06  (1% of variance)
+    a6 =   423.79  sigma_total=  212.38  sigma_epistemic=   61.18  (8% of variance)
 
---- 11733_cv ---  p(bump)=0.986+/-0.025
-    a1 =    94.65  sigma_total=   90.69  sigma_epistemic=   25.30  (8% of variance)
-    a2 =     0.44  sigma_total=    0.18  sigma_epistemic=    0.04  (4% of variance)
-    a3 =    16.99  sigma_total=   13.63  sigma_epistemic=    0.77  (0% of variance)
-    a4 =    40.83  sigma_total=    8.24  sigma_epistemic=    5.06  (38% of variance)
-    a5 =    44.59  sigma_total=   18.94  sigma_epistemic=    5.52  (9% of variance)
+--- 11716_ch ---  p(bump)=0.999+/-0.001
+    a1 =   107.39  sigma_total=  107.41  sigma_epistemic=   40.37  (14% of variance)
+    a2 =     0.42  sigma_total=    0.21  sigma_epistemic=    0.04  (4% of variance)
+    a3 =    16.62  sigma_total=   13.55  sigma_epistemic=    0.56  (0% of variance)
+    a4 =    32.15  sigma_total=    6.74  sigma_epistemic=    1.80  (7% of variance)
+    a5 =     1.16  sigma_total=    0.67  sigma_epistemic=    0.10  (2% of variance)
+    a6 =   446.01  sigma_total=  205.67  sigma_epistemic=   39.93  (4% of variance)
 
---- 11733_ch ---  p(bump)=0.998+/-0.004
-    a1 =   112.39  sigma_total=   89.13  sigma_epistemic=   26.52  (9% of variance)
-    a2 =     0.51  sigma_total=    0.17  sigma_epistemic=    0.04  (4% of variance)
-    a3 =    17.40  sigma_total=   13.57  sigma_epistemic=    0.80  (0% of variance)
-    a4 =    39.66  sigma_total=    7.84  sigma_epistemic=    4.40  (31% of variance)
-    a5 =    43.05  sigma_total=   16.67  sigma_epistemic=    3.31  (4% of variance)
+--- 11733_cv ---  p(bump)=0.871+/-0.201
+    a1 =    56.25  sigma_total=   94.72  sigma_epistemic=   10.44  (1% of variance)
+    a2 =     0.39  sigma_total=    0.20  sigma_epistemic=    0.09  (18% of variance)
+    a3 =    15.16  sigma_total=   13.93  sigma_epistemic=    3.56  (7% of variance)
+    a4 =    34.67  sigma_total=    7.64  sigma_epistemic=    3.58  (22% of variance)
+    a5 =     1.18  sigma_total=    0.67  sigma_epistemic=    0.07  (1% of variance)
+    a6 =   438.49  sigma_total=  212.54  sigma_epistemic=   56.25  (7% of variance)
 
---- 11698_cv ---  p(bump)=0.535+/-0.281
-    a1 =   214.54  sigma_total=  129.57  sigma_epistemic=   32.98  (6% of variance)
-    a2 =     0.13  sigma_total=    0.16  sigma_epistemic=    0.08  (26% of variance)
-    a3 =     7.74  sigma_total=   12.29  sigma_epistemic=    3.60  (9% of variance)
-    a4 =    27.88  sigma_total=   12.83  sigma_epistemic=    5.31  (17% of variance)
-    a5 =    54.03  sigma_total=   22.21  sigma_epistemic=    7.17  (10% of variance)
+--- 11733_ch ---  p(bump)=0.990+/-0.015
+    a1 =    68.55  sigma_total=   89.79  sigma_epistemic=   16.92  (4% of variance)
+    a2 =     0.46  sigma_total=    0.21  sigma_epistemic=    0.13  (38% of variance)
+    a3 =    17.29  sigma_total=   13.61  sigma_epistemic=    0.99  (1% of variance)
+    a4 =    36.21  sigma_total=    7.91  sigma_epistemic=    4.43  (31% of variance)
+    a5 =     1.13  sigma_total=    0.66  sigma_epistemic=    0.03  (0% of variance)
+    a6 =   471.85  sigma_total=  217.75  sigma_epistemic=   74.90  (12% of variance)
 
---- 11698_ch ---  p(bump)=0.999+/-0.001
-    a1 =    78.37  sigma_total=   85.44  sigma_epistemic=   17.17  (4% of variance)
-    a2 =     0.38  sigma_total=    0.16  sigma_epistemic=    0.04  (6% of variance)
-    a3 =    16.85  sigma_total=   13.54  sigma_epistemic=    0.40  (0% of variance)
-    a4 =    41.55  sigma_total=    7.92  sigma_epistemic=    4.53  (33% of variance)
-    a5 =    44.68  sigma_total=   20.34  sigma_epistemic=    9.89  (24% of variance)
+--- 11698_cv ---  p(bump)=0.888+/-0.099
+    a1 =   214.91  sigma_total=  128.02  sigma_epistemic=   20.29  (3% of variance)
+    a2 =     0.13  sigma_total=    0.14  sigma_epistemic=    0.04  (7% of variance)
+    a3 =    13.11  sigma_total=   13.58  sigma_epistemic=    1.44  (1% of variance)
+    a4 =    28.13  sigma_total=   13.34  sigma_epistemic=    3.43  (7% of variance)
+    a5 =     1.12  sigma_total=    0.66  sigma_epistemic=    0.04  (0% of variance)
+    a6 =   409.89  sigma_total=  204.04  sigma_epistemic=   10.24  (0% of variance)
+
+--- 11698_ch ---  p(bump)=0.988+/-0.024
+    a1 =   126.64  sigma_total=   93.18  sigma_epistemic=   25.50  (7% of variance)
+    a2 =     0.37  sigma_total=    0.16  sigma_epistemic=    0.04  (7% of variance)
+    a3 =    16.83  sigma_total=   13.59  sigma_epistemic=    0.33  (0% of variance)
+    a4 =    43.67  sigma_total=    7.50  sigma_epistemic=    3.75  (25% of variance)
+    a5 =     1.12  sigma_total=    0.67  sigma_epistemic=    0.07  (1% of variance)
+    a6 =   411.89  sigma_total=  212.81  sigma_epistemic=   53.84  (6% of variance)
 
 ====================================================================================================
 SYNTHETIC DATA (200 samples, seed=123, in-distribution by construction)
 ====================================================================================================
-Ensemble-mean MAE: a1=111.499 | a2=0.087 | a3=4.998 | a4=13.949 | a5=18.785
-1-sigma coverage (total var): a1/a2/a3=78%  a4/a5(bump)=70%  (want ~68%)
+Ensemble-mean MAE: a1=103.991 | a2=0.093 | a3=5.362 | a4=13.133 | a5=0.451 | a6=178.553
+1-sigma coverage (total var): a1/a2/a3=80%  a4/a5(bump)=74%  (want ~68%)
 
 ====================================================================================================
 THE HYPOTHESIS CHECK: epistemic sigma, real shots vs. synthetic (in-distribution)
 ====================================================================================================
 param   real mean   synth mean     ratio
-  a1      60.739       35.289     1.72x
-  a2       0.069        0.045     1.53x
-  a3       2.199        2.928     0.75x
-  a4       6.901        4.399     1.57x
-  a5      10.765       13.267     0.81x
+  a1      44.377       38.154     1.16x
+  a2       0.085        0.047     1.79x
+  a3       2.541        3.147     0.81x
+  a4       3.796        3.582     1.06x
+  a5       0.213        0.101     2.11x
+  a6     120.118       76.693     1.57x
 
-p(bump) cross-member std: real=0.139  synth=0.212  ratio=0.66x
+p(bump) cross-member std: real=0.093  synth=0.222  ratio=0.42x
 
 Saved pff_ensemble_eval.csv
 Saved pff_ensemble_epistemic_check.png

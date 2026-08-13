@@ -50,7 +50,7 @@ CSV_PATH   = "res/test_images/11733/processed/11733.csv"
 JSON_PATH  = "pff_training_results_relu_uncertainty.json"
 MODEL_PATH = "model_pff_relu_uncertainty.keras"
 DRM_PATH   = "res/drm/200x200.xlsx"
-PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
 
 
 def load_signal(csv_path: str) -> np.ndarray:
@@ -91,10 +91,10 @@ if __name__ == "__main__":
     # z-score normalise (same as training)
     x_norm = normalize_apply(signal_l1.reshape(1, -1), mean, std)
 
-    # predict: pff_out is (mu_norm, logvar_norm) concatenated, (10,)
+    # predict: pff_out is (mu_norm, logvar_norm) concatenated, (12,)
     pff_out = model.predict(x_norm, verbose=0)[0]
-    p_phys, p_sigma = pff_mean_sigma(pff_out, param_bounds)     # both (5,), physical units
-    p_norm = pff_out[:5]                                        # for the [0,1] console column
+    p_phys, p_sigma = pff_mean_sigma(pff_out, param_bounds)     # both (6,), physical units
+    p_norm = pff_out[:6]                                        # for the [0,1] console column
 
     # --- reconstruct: spectrum -> DRM -> L1-normalise ---
     energy_bins   = mev_bin_centers(drm.shape[1])
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     print(f"\na3 = {p_phys[2]:.2f}  ->  bump {'DETECTED' if bump_present else 'NOT detected'}")
     if bump_present:
         print(f"  Bump centre  a4 = {p_phys[3]:.1f} MeV")
-        print(f"  Bump width   a5 = {p_phys[4]:.1f}")
+        print(f"  Bump width   a5 = {p_phys[4]:.3f} (high-E coeff), a6 = {p_phys[5]:.1f} (low-E coeff)")
 
     # --- figure ---
     channels = np.arange(1, 201)
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     # a residual alone says nothing about how much to trust
     # the fit away from the measured channels.
     mc_rng    = np.random.default_rng(MC_SEED)
-    draws     = mc_rng.normal(p_phys, p_sigma, size=(N_MC_DRAWS, 5))
+    draws     = mc_rng.normal(p_phys, p_sigma, size=(N_MC_DRAWS, 6))
     draws     = np.clip(draws, param_bounds[:, 0], param_bounds[:, 1])
     mc_spectra = np.stack([pff_func(energy_bins, draws[i]) for i in range(N_MC_DRAWS)])
     band_lo   = np.percentile(mc_spectra, 16, axis=0)

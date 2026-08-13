@@ -36,7 +36,7 @@ from data_utils import generate_pff_training_data, load_drm, normalize_apply
 from pff_ensemble_utils import decode_ensemble
 from train_pff_bounded_gated import decode_v2
 
-PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
 N_MEMBERS = 5
 SYNTH_SAMPLES = 200
 SYNTH_SEED = 123
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     print("\nSaved pff_ensemble_eval.csv")
 
     # --- figure: epistemic sigma distribution, real vs synthetic ---
-    fig, axes = plt.subplots(1, 5, figsize=(20, 4), tight_layout=True)
+    fig, axes = plt.subplots(1, len(PARAM_NAMES), figsize=(4 * len(PARAM_NAMES), 4), tight_layout=True)
     for ax, n in zip(axes, PARAM_NAMES):
         ax.hist(synth_df[f"{n}_sigma_epistemic"], bins=20, alpha=0.6, color="steelblue",
                 label="synthetic (in-dist)", density=True)

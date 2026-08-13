@@ -116,7 +116,7 @@ elif PFF_VERSION == "v2":
 else:
     PFF_MODEL_PATH = "model_pff_relu_uncertainty.keras"
     PFF_JSON       = "pff_training_results_relu_uncertainty.json"
-PARAM_NAMES    = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES    = ["a1", "a2", "a3", "a4", "a5", "a6"]
 N_MC_DRAWS     = 500     # Monte Carlo draws for the PFF spectrum uncertainty band
 MC_SEED        = 7
 N_SYNTH_SAMPLES = 12     # synthetic samples for the true-vs-predicted PFF calibration check
@@ -208,7 +208,7 @@ def pff_fit_for_signal(
     p_phys, p_sigma, p_bump = decode_pff_output(pff_out, param_bounds)
 
     mc_rng = np.random.default_rng(MC_SEED)
-    draws = mc_rng.normal(p_phys, p_sigma, size=(N_MC_DRAWS, 5))
+    draws = mc_rng.normal(p_phys, p_sigma, size=(N_MC_DRAWS, len(PARAM_NAMES)))
     draws = np.clip(draws, param_bounds[:, 0], param_bounds[:, 1])
     mc_spectra = np.stack([pff_func(energy_bins, draws[i]) for i in range(N_MC_DRAWS)])
     band_lo = np.percentile(mc_spectra, 16, axis=0)
@@ -454,7 +454,7 @@ def evaluate_pff_synthetic_calibration(drm: np.ndarray, pff_model, pff_res: dict
         row += "  ".join(
             f"{PARAM_NAMES[j]}: true={params_true[i,j]:6.2f} pred={mu_phys[i,j]:6.2f}"
             f"+/-{sigma_phys[i,j]:4.2f} diff={diff[i,j]:+5.2f}"
-            for j in range(5)
+            for j in range(len(PARAM_NAMES))
         )
         print(row)
 
@@ -469,7 +469,12 @@ def evaluate_pff_synthetic_calibration(drm: np.ndarray, pff_model, pff_res: dict
     fig, ax = plt.subplots(figsize=(7, 6), tight_layout=True)
     lo, hi = pff_bounds[:, 0], pff_bounds[:, 1]
     true_norm = (params_true - lo) / (hi - lo)
-    mu_norm = pff_out[:, :5]
+    # Derived from the already-decoded mu_phys, not sliced from raw pff_out --
+    # v1's raw layout is [mu, logvar] so a naive [:, :n] slice happens to be
+    # mu, but v2/v3's gated layout isn't laid out that way at all (it's
+    # [a12_mu, a12_logvar, bump_logit, a3456_mu, a3456_logvar]), so the naive
+    # slice was silently wrong there.
+    mu_norm = (mu_phys - lo) / (hi - lo)
     sigma_norm = sigma_phys / (hi - lo)
     for j, n in enumerate(PARAM_NAMES):
         ax.errorbar(true_norm[:, j], mu_norm[:, j], yerr=sigma_norm[:, j],

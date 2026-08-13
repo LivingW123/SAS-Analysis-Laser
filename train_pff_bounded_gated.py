@@ -22,27 +22,34 @@ changes, both tried here:
    previous +-10 clip (max sigma_norm = exp(5) ~= 148.4). LOGVAR_MAX=4 caps
    it at exp(2) ~= 7.4 -- a ~20x tighter ceiling.
 
-2. Gated bump structure for a3/a4/a5. a3 (bump amplitude) is bimodal by
+2. Gated bump structure for a3/a4/a5/a6. a3 (bump amplitude) is bimodal by
    construction (data_utils.sample_pff_spectra: exactly 0 for half the
    training data, ~[5,100] for the rest) -- a single Gaussian NLL head has
    no way to represent "either exactly 0, or somewhere in a wide range" and
    is forced to inflate sigma to hedge between the two regimes even
    in-distribution. This splits it into an explicit binary classifier (bump
    present or not, trained with BCE) plus a magnitude regression for
-   a3/a4/a5 conditioned on -- and only supervised on -- bump-present
+   a3/a4/a5/a6 conditioned on -- and only supervised on -- bump-present
    samples, combined at decode time via the standard Bernoulli-Gaussian
    mixture mean/variance:
      E[a3]   = p_bump * mu_given_bump
      Var[a3] = p_bump*sigma_given_bump^2 + p_bump*(1-p_bump)*mu_given_bump^2
-   a4/a5 (bump centre/width) are undefined when there's no bump, so they're
-   reported as their given-bump values directly rather than mixed with 0.
+   a4/a5/a6 (bump centre/energy-dependent-width coefficients) are undefined
+   when there's no bump, so they're reported as their given-bump values
+   directly rather than mixed with 0.
+
+   [Session note: originally a4/a5 (centre/fixed width); a5 was later
+   repurposed and a6 added when data_utils.pff_func's bump denominator
+   changed from a constant a5 to an energy-dependent a5*x + a6/x. The gating
+   logic here is unaffected by that -- it just grew from 3 to 4
+   bump-conditional outputs.]
 
 Entirely separate from train_pff.py / model_pff_relu_uncertainty.keras --
 kept side by side to compare, not a replacement. Shares data_utils.py
 (PFF_PARAM_BOUNDS, normalize_pff_params, generate_pff_training_data, ...)
 but not train_pff.py's pff_nll_loss/build_model/PFFMetricsCallback, since
-the output layout here (11-wide, gated) is structurally different from
-train_pff.py's (10-wide, mu+logvar per parameter) -- see decode_v2 below
+the output layout here (13-wide, gated) is structurally different from
+train_pff.py's (12-wide, mu+logvar per parameter) -- see decode_v2 below
 for why a shared decode helper doesn't apply either.
 
 Usage
@@ -91,7 +98,7 @@ LOGVAR_MAX = 4.0   # tanh-bounded logvar in (-4, 4) -> sigma_norm in (0.135, 7.3
 MODEL_PATH   = "model_pff_v2.keras"
 RESULTS_JSON = "pff_training_results_v2.json"
 
-PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
 
 
 # ---------------------------------------------------------------------------
@@ -101,15 +108,18 @@ PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
 def build_model() -> tf.keras.Model:
     """
     200 -> 512 -> 256 -> 128 -> gated heads:
-      - a1, a2   : ReLU mean + tanh-bounded logvar (plain continuous, unimodal)
-      - bump_logit: P(bump present) pre-sigmoid logit, trained with BCE
-      - a3,a4,a5 : ReLU mean + tanh-bounded logvar, magnitude/position GIVEN
-                   a bump is present (only supervised on bump-present samples
-                   -- see pff_loss_v2)
+      - a1, a2      : ReLU mean + tanh-bounded logvar (plain continuous, unimodal)
+      - bump_logit  : P(bump present) pre-sigmoid logit, trained with BCE
+      - a3,a4,a5,a6 : ReLU mean + tanh-bounded logvar, magnitude/position/width
+                      GIVEN a bump is present (only supervised on bump-present
+                      samples -- see pff_loss_v2). a5,a6 are the two
+                      coefficients of the energy-dependent bump width
+                      a5*x + a6/x (data_utils.pff_func), both undefined
+                      without a bump exactly like a4.
 
-    Output: 11-wide concat
+    Output: 13-wide concat
       [a1_mu, a2_mu, a1_logvar, a2_logvar, bump_logit,
-       a3_mu, a4_mu, a5_mu, a3_logvar, a4_logvar, a5_logvar]
+       a3_mu, a4_mu, a5_mu, a6_mu, a3_logvar, a4_logvar, a5_logvar, a6_logvar]
     """
     inp = tf.keras.Input(shape=(200,), name="detector_response")
     x = tf.keras.layers.Dense(512)(inp)
@@ -128,12 +138,12 @@ def build_model() -> tf.keras.Model:
 
     bump_logit = tf.keras.layers.Dense(1, name="bump_logit")(x)
 
-    a345_mean = tf.keras.layers.Dense(3, activation="relu", name="a345_mean")(x)
-    a345_logvar_tanh = tf.keras.layers.Dense(3, activation="tanh", name="a345_logvar_tanh")(x)
-    a345_logvar = tf.keras.layers.Rescaling(scale=LOGVAR_MAX, name="a345_logvar")(a345_logvar_tanh)
+    a3456_mean = tf.keras.layers.Dense(4, activation="relu", name="a3456_mean")(x)
+    a3456_logvar_tanh = tf.keras.layers.Dense(4, activation="tanh", name="a3456_logvar_tanh")(x)
+    a3456_logvar = tf.keras.layers.Rescaling(scale=LOGVAR_MAX, name="a3456_logvar")(a3456_logvar_tanh)
 
     out = tf.keras.layers.Concatenate(name="pff_params_v2")(
-        [a12_mean, a12_logvar, bump_logit, a345_mean, a345_logvar]
+        [a12_mean, a12_logvar, bump_logit, a3456_mean, a3456_logvar]
     )
     return tf.keras.Model(inp, out, name="pff_regressor_v2")
 
@@ -143,20 +153,20 @@ def pff_loss_v2(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     Three terms over the gated v2 head (see build_model):
       1. Heteroscedastic NLL for a1, a2 -- plain continuous, no gating needed.
       2. Binary cross-entropy for bump presence (label = a3_true > 0).
-      3. Heteroscedastic NLL for a3, a4, a5 given bump present, masked to
+      3. Heteroscedastic NLL for a3, a4, a5, a6 given bump present, masked to
          bump-present samples only -- unlike train_pff.py's continuous-a3
          weighting trick, this uses the TRUE bump label as a hard 0/1 mask,
          since bump presence is now its own explicit target (term 2) rather
          than something inferred from a3's own magnitude.
     """
-    a12_mu, a12_logvar   = y_pred[:, 0:2], y_pred[:, 2:4]
-    bump_logit           = y_pred[:, 4:5]
-    a345_mu, a345_logvar = y_pred[:, 5:8], y_pred[:, 8:11]
+    a12_mu, a12_logvar     = y_pred[:, 0:2], y_pred[:, 2:4]
+    bump_logit             = y_pred[:, 4:5]
+    a3456_mu, a3456_logvar = y_pred[:, 5:9], y_pred[:, 9:13]
 
-    a12_true  = y_true[:, 0:2]
-    a3_true   = y_true[:, 2:3]
-    a345_true = y_true[:, 2:5]
-    bump_true = tf.cast(a3_true > 0.0, tf.float32)          # (B, 1)
+    a12_true   = y_true[:, 0:2]
+    a3_true    = y_true[:, 2:3]
+    a3456_true = y_true[:, 2:6]
+    bump_true  = tf.cast(a3_true > 0.0, tf.float32)          # (B, 1)
 
     nll_12  = 0.5 * (tf.exp(-a12_logvar) * tf.square(a12_true - a12_mu) + a12_logvar)
     loss_12 = tf.reduce_mean(nll_12)
@@ -164,36 +174,36 @@ def pff_loss_v2(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     bce       = tf.keras.losses.binary_crossentropy(bump_true, bump_logit, from_logits=True)
     loss_bump = tf.reduce_mean(bce)
 
-    nll_345  = 0.5 * (tf.exp(-a345_logvar) * tf.square(a345_true - a345_mu) + a345_logvar)
-    mask_345 = tf.repeat(bump_true, 3, axis=1)               # a3,a4,a5 all bump-conditional
-    loss_345 = tf.reduce_sum(nll_345 * mask_345) / (tf.reduce_sum(mask_345) + 1e-6)
+    nll_3456  = 0.5 * (tf.exp(-a3456_logvar) * tf.square(a3456_true - a3456_mu) + a3456_logvar)
+    mask_3456 = tf.repeat(bump_true, 4, axis=1)               # a3,a4,a5,a6 all bump-conditional
+    loss_3456 = tf.reduce_sum(nll_3456 * mask_3456) / (tf.reduce_sum(mask_3456) + 1e-6)
 
-    return loss_12 + loss_bump + loss_345
+    return loss_12 + loss_bump + loss_3456
 
 
 def decode_v2(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Split the 11-wide v2 output into physical-units (mean, sigma, p_bump).
+    Split the 13-wide v2 output into physical-units (mean, sigma, p_bump).
 
     a3's reported mean/sigma are the Bernoulli-Gaussian mixture mean/variance
     (p_bump * mu_given_bump, mixture variance) -- a3=0 should read as
     "probably no bump" when p_bump is low, not "bump of size mu_given_bump,
-    reported regardless of whether one exists". a4/a5 are reported as their
-    given-bump values directly, since a bump position/width conditioned on
-    "no bump" isn't a meaningful quantity to mix toward.
+    reported regardless of whether one exists". a4/a5/a6 are reported as
+    their given-bump values directly, since bump position/width conditioned
+    on "no bump" isn't a meaningful quantity to mix toward.
 
-    Works on a single sample, shape (11,) -> (5,),(5,),(1,), or a batch,
-    shape (N, 11) -> (N,5),(N,5),(N,1).
+    Works on a single sample, shape (13,) -> (6,),(6,),(1,), or a batch,
+    shape (N, 13) -> (N,6),(N,6),(N,1).
     """
-    a12_mu_n     = pff_out[..., 0:2]
-    a12_logvar   = pff_out[..., 2:4]
-    bump_logit   = pff_out[..., 4:5]
-    a345_mu_n    = pff_out[..., 5:8]
-    a345_logvar  = pff_out[..., 8:11]
+    a12_mu_n      = pff_out[..., 0:2]
+    a12_logvar    = pff_out[..., 2:4]
+    bump_logit    = pff_out[..., 4:5]
+    a3456_mu_n    = pff_out[..., 5:9]
+    a3456_logvar  = pff_out[..., 9:13]
 
     p_bump  = 1.0 / (1.0 + np.exp(-bump_logit))              # (..., 1)
-    sigma12_n  = np.exp(0.5 * np.clip(a12_logvar, -20.0, 20.0))
-    sigma345_n = np.exp(0.5 * np.clip(a345_logvar, -20.0, 20.0))
+    sigma12_n   = np.exp(0.5 * np.clip(a12_logvar, -20.0, 20.0))
+    sigma3456_n = np.exp(0.5 * np.clip(a3456_logvar, -20.0, 20.0))
 
     lo, hi = param_bounds[:, 0], param_bounds[:, 1]
     span = hi - lo
@@ -201,17 +211,17 @@ def decode_v2(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.ndarray
     a12_mu_phys    = a12_mu_n * span[0:2] + lo[0:2]
     a12_sigma_phys = sigma12_n * span[0:2]
 
-    a345_mu_phys_given    = a345_mu_n * span[2:5] + lo[2:5]
-    a345_sigma_phys_given = sigma345_n * span[2:5]
+    a3456_mu_phys_given    = a3456_mu_n * span[2:6] + lo[2:6]
+    a3456_sigma_phys_given = sigma3456_n * span[2:6]
 
-    a3_mu_given    = a345_mu_phys_given[..., 0:1]
-    a3_sigma_given = a345_sigma_phys_given[..., 0:1]
+    a3_mu_given    = a3456_mu_phys_given[..., 0:1]
+    a3_sigma_given = a3456_sigma_phys_given[..., 0:1]
     a3_mu_mix  = p_bump * a3_mu_given
     a3_var_mix = p_bump * a3_sigma_given ** 2 + p_bump * (1.0 - p_bump) * a3_mu_given ** 2
     a3_sigma_mix = np.sqrt(np.maximum(a3_var_mix, 0.0))
 
-    mu_phys    = np.concatenate([a12_mu_phys, a3_mu_mix, a345_mu_phys_given[..., 1:3]], axis=-1)
-    sigma_phys = np.concatenate([a12_sigma_phys, a3_sigma_mix, a345_sigma_phys_given[..., 1:3]], axis=-1)
+    mu_phys    = np.concatenate([a12_mu_phys, a3_mu_mix, a3456_mu_phys_given[..., 1:4]], axis=-1)
+    sigma_phys = np.concatenate([a12_sigma_phys, a3_sigma_mix, a3456_sigma_phys_given[..., 1:4]], axis=-1)
 
     mu_phys = np.clip(mu_phys, lo, hi)
     return mu_phys, sigma_phys, p_bump
@@ -222,11 +232,12 @@ def decode_v2(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.ndarray
 # ---------------------------------------------------------------------------
 
 def _pff_batch(energy_bins: np.ndarray, params: np.ndarray) -> np.ndarray:
-    """Vectorised PFF evaluation. params shape (N, 5), returns (N, len(energy_bins))."""
-    a1, a2, a3, a4, a5 = params[:, 0], params[:, 1], params[:, 2], params[:, 3], params[:, 4]
+    """Vectorised PFF evaluation. params shape (N, 6), returns (N, len(energy_bins))."""
+    a1, a2, a3, a4, a5, a6 = (params[:, j] for j in range(6))
     x = energy_bins[np.newaxis, :]
     brems = a1[:, None] * np.exp(-a2[:, None] * x)
-    bump  = a3[:, None] * np.exp(-(x - a4[:, None]) ** 2 / a5[:, None])
+    width = a5[:, None] * x + a6[:, None] / x
+    bump  = a3[:, None] * np.exp(-(x - a4[:, None]) ** 2 / width)
     return brems + bump
 
 

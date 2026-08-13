@@ -45,7 +45,7 @@ from data_utils import (
 )
 from train_pff_bounded_gated import decode_v2
 
-PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
 
 SHOTS = []
 for shot in ["10084", "11696", "11705", "11707", "11716", "11733", "11698"]:

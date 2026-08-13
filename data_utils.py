@@ -11,7 +11,17 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimize
 
-# PFF form:  a1*exp(-a2*x) + a3*exp(-(x-a4)^2 / a5)
+# PFF form:  a1*exp(-a2*x) + a3*exp(-(x-a4)^2 / (a5*x + a6/x))
+# 6-parameter form (was 5): the bump denominator a5 (a fixed width) became an
+# energy-dependent width a5*x + a6/x -- a5 now dominates at high energy
+# (width ~ a5*x), a6 dominates at low energy (width ~ a6/x), per explicit
+# request. This changes what "a5" physically means (no longer a fixed width
+# in the old [5,100] range) and introduces a6 with no prior calibration --
+# the mean/std/lo/hi below are a placeholder chosen so that at a
+# representative mid-range energy (x=20 MeV) the two terms contribute
+# roughly equally and sum to the old typical width (~40): a5=1 -> a5*20=20,
+# a6=400 -> a6/20=20. NOT independently validated against real shots or any
+# physics reference -- flag for review if specific ranges are known.
 # Columns: [mean, std, lo, hi] used for bounded-normal sampling.
 # a3 (bump amplitude) bounds are for the bump-present case; set to 0 for no-bump.
 PFF_PARAM_SAMPLING = np.array([
@@ -19,7 +29,8 @@ PFF_PARAM_SAMPLING = np.array([
     [0.25,  0.2,   0.01,   1.0],   # a2 — bremsstrahlung decay rate (1/MeV)
     [8.0,   10.0,  5.0,  100.0],   # a3 — bump amplitude (bump-present lo = 5)
     [35.0,  25.0,  1.0,   49.0],   # a4 — bump centre (MeV)
-    [40.0,  25.0,  5.0,  100.0],   # a5 — bump width parameter
+    [1.0,   0.6,   0.1,    5.0],   # a5 — bump width, high-energy (a5*x) coefficient [PLACEHOLDER]
+    [400.0, 250.0, 20.0, 1000.0],  # a6 — bump width, low-energy (a6/x) coefficient [PLACEHOLDER]
 ])
 # a2's hi was originally 5.0 /MeV, which after binning + L1-normalization
 # collapses ~13% of "spectra" to a single near-delta bin (median a2 for
@@ -34,7 +45,8 @@ PFF_PARAM_BOUNDS = np.array([
     [0.01,   1.0],   # a2
     [0.0,  100.0],   # a3
     [1.0,   49.0],   # a4
-    [5.0,  100.0],   # a5
+    [0.1,    5.0],   # a5 [PLACEHOLDER, see PFF_PARAM_SAMPLING]
+    [20.0, 1000.0],  # a6 [PLACEHOLDER, see PFF_PARAM_SAMPLING]
 ])
 
 
@@ -355,9 +367,9 @@ def apply_saturation(
 # ---------------------------------------------------------------------------
 
 def pff_func(x: np.ndarray, params: np.ndarray) -> np.ndarray:
-    """Evaluate the PFF model: a1*exp(-a2*x) + a3*exp(-(x-a4)^2/a5)."""
-    a1, a2, a3, a4, a5 = params
-    return a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / a5)
+    """Evaluate the PFF model: a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x + a6/x))."""
+    a1, a2, a3, a4, a5, a6 = params
+    return a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / (a5 * x + a6 / x))
 
 
 def _sample_one_param(j: int, has_bump: bool, rng: np.random.Generator) -> float:
@@ -377,9 +389,10 @@ def _sample_params_vec(n: int, has_bump: bool, rng: np.random.Generator) -> np.n
     Vectorised bounded-normal sampling for n PFF parameter sets.
 
     Uses rejection sampling entirely in NumPy (no Python loop over samples).
-    Returns (n, 5) array.
+    Returns (n, 6) array.
     """
-    mu    = PFF_PARAM_SAMPLING[:, 0]   # (5,)
+    n_params = PFF_PARAM_SAMPLING.shape[0]
+    mu    = PFF_PARAM_SAMPLING[:, 0]   # (6,)
     sigma = PFF_PARAM_SAMPLING[:, 1]
     lo    = PFF_PARAM_SAMPLING[:, 2].copy()
     hi    = PFF_PARAM_SAMPLING[:, 3]
@@ -387,12 +400,12 @@ def _sample_params_vec(n: int, has_bump: bool, rng: np.random.Generator) -> np.n
     if has_bump:
         lo[2] = 5.0   # visible bump: a3 >= 5
 
-    out  = rng.normal(mu, sigma, size=(n, 5))   # (n, 5) initial draw
-    mask = (out < lo) | (out > hi)              # (n, 5) invalid entries
+    out  = rng.normal(mu, sigma, size=(n, n_params))   # (n, 6) initial draw
+    mask = (out < lo) | (out > hi)                     # (n, 6) invalid entries
 
     # Iteratively redraw invalid entries until all are in bounds.
     while mask.any():
-        redraw = rng.normal(mu, sigma, size=(n, 5))
+        redraw = rng.normal(mu, sigma, size=(n, n_params))
         out    = np.where(mask, redraw, out)
         mask   = (out < lo) | (out > hi)
 
@@ -423,19 +436,19 @@ def sample_pff_spectra(
     Returns
     -------
     spectra : (n_samples, M)  float64 — PFF spectra in energy space
-    params  : (n_samples, 5)  float64 — [a1, a2, a3, a4, a5]
+    params  : (n_samples, 6)  float64 — [a1, a2, a3, a4, a5, a6]
     """
     n_bump    = int(n_samples * bump_fraction)
     n_no_bump = n_samples - n_bump
 
-    p_bump    = _sample_params_vec(n_bump,    True,  rng)  # (n_bump, 5)
-    p_no_bump = _sample_params_vec(n_no_bump, False, rng)  # (n_no_bump, 5)
-    params    = np.vstack([p_bump, p_no_bump])             # (n_samples, 5)
+    p_bump    = _sample_params_vec(n_bump,    True,  rng)  # (n_bump, 6)
+    p_no_bump = _sample_params_vec(n_no_bump, False, rng)  # (n_no_bump, 6)
+    params    = np.vstack([p_bump, p_no_bump])             # (n_samples, 6)
 
     # Vectorised PFF evaluation: (n, M)
     x  = energy_bins[np.newaxis, :]               # (1, M)
-    a1, a2, a3, a4, a5 = (params[:, j, np.newaxis] for j in range(5))
-    spectra = a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / a5)
+    a1, a2, a3, a4, a5, a6 = (params[:, j, np.newaxis] for j in range(6))
+    spectra = a1 * np.exp(-a2 * x) + a3 * np.exp(-(x - a4) ** 2 / (a5 * x + a6 / x))
 
     idx = rng.permutation(n_samples)
     return spectra[idx], params[idx]
@@ -445,11 +458,18 @@ MAX_BUMPS = 3   # multi-bump spectrum generation — see sample_multibump_spectr
 
 
 def _sample_bump_params_vec(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Vectorised bounded-normal sampling for n (a3, a4, a5) bump triples, bump-present bounds."""
-    mu    = PFF_PARAM_SAMPLING[2:, 0]   # (3,) a3, a4, a5 means
-    sigma = PFF_PARAM_SAMPLING[2:, 1]
-    lo    = PFF_PARAM_SAMPLING[2:, 2].copy()
-    hi    = PFF_PARAM_SAMPLING[2:, 3]
+    """
+    Vectorised bounded-normal sampling for n (a3, a4, a5) bump triples, bump-present bounds.
+
+    Explicitly sliced to rows 2:5 (a3, a4, a5), not a blanket [2:] -- this
+    feeds sample_multibump_spectra's own simple constant-width bump term
+    (a3*exp(-(x-a4)^2/a5)), a different, older 3-param bump form than
+    pff_func's energy-dependent-width one, so it doesn't want a6 at all.
+    """
+    mu    = PFF_PARAM_SAMPLING[2:5, 0]   # (3,) a3, a4, a5 means
+    sigma = PFF_PARAM_SAMPLING[2:5, 1]
+    lo    = PFF_PARAM_SAMPLING[2:5, 2].copy()
+    hi    = PFF_PARAM_SAMPLING[2:5, 3]
     lo[0] = 5.0   # a3 bump-present lower bound
 
     out  = rng.normal(mu, sigma, size=(n, 3))
@@ -495,7 +515,7 @@ def sample_multibump_spectra(
     x = energy_bins[np.newaxis, :]   # (1, M)
 
     # Bremsstrahlung term (a3 forced to 0 here; bumps handled separately below).
-    a1a2 = _sample_params_vec(n_samples, False, rng)   # (n_samples, 5)
+    a1a2 = _sample_params_vec(n_samples, False, rng)   # (n_samples, 6); only cols 0,1 (a1,a2) used
     a1, a2 = a1a2[:, 0], a1a2[:, 1]
     spectra = a1[:, np.newaxis] * np.exp(-a2[:, np.newaxis] * x)   # (n_samples, M)
 
@@ -550,11 +570,12 @@ def pff_mean_sigma(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.nd
     unclipped since a mean pinned at the boundary with a wide sigma is
     itself informative (says the fit wanted to go further and is unsure).
 
-    Works on a single sample, shape (10,) -> two (5,) arrays, or a batch,
-    shape (N, 10) -> two (N, 5) arrays.
+    Works on a single sample, shape (12,) -> two (6,) arrays, or a batch,
+    shape (N, 12) -> two (N, 6) arrays.
     """
-    mu_norm = pff_out[..., :5]
-    logvar_norm = pff_out[..., 5:]
+    n_params = param_bounds.shape[0]
+    mu_norm = pff_out[..., :n_params]
+    logvar_norm = pff_out[..., n_params:]
     sigma_norm = np.exp(0.5 * np.clip(logvar_norm, -10.0, 10.0))
     mu_phys = denormalize_pff_params(mu_norm)
     mu_phys = np.clip(mu_phys, param_bounds[:, 0], param_bounds[:, 1])
@@ -718,7 +739,7 @@ def generate_pff_training_data(
     Returns
     -------
     X      : (n_samples, 200) float32 — noisy detector responses
-    params : (n_samples, 5)   float32 — PFF parameters [a1, a2, a3, a4, a5]
+    params : (n_samples, 6)   float32 — PFF parameters [a1, a2, a3, a4, a5, a6]
     """
     energy_bins = mev_bin_centers(drm.shape[1])
     spectra, params = sample_pff_spectra(n_samples, energy_bins, rng, bump_fraction)

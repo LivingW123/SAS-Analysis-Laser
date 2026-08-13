@@ -2,16 +2,17 @@
 TensorFlow FC regressor for full PFF spectral parameter estimation.
 
 Input  : 200-channel z-score-normalized detector response
-Output : 5 PFF parameters [a1, a2, a3, a4, a5] normalized to [0, 1] (mean),
+Output : 6 PFF parameters [a1, a2, a3, a4, a5, a6] normalized to [0, 1] (mean),
          plus a per-parameter log-variance (uncertainty) -- see below.
-Loss   : heteroscedastic Gaussian NLL — a4 and a5 terms are weighted by
+Loss   : heteroscedastic Gaussian NLL — a4/a5/a6 terms are weighted by
          normalized a3, so bump-position/width contribute nothing when a3=0.
 
-The PFF model itself (a1*exp(-a2*x) + a3*exp(-(x-a4)^2/a5), a bremsstrahlung
-continuum plus an optional Gaussian bump) is an assumed physical family,
-consistent with existing theory for this kind of source, but it's a model
-choice, not a measurement -- it could be wrong or incomplete for shots that
-don't actually follow it.
+The PFF model itself (a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x+a6/x)), a
+bremsstrahlung continuum plus an optional Gaussian bump with an
+energy-dependent width) is an assumed physical family, consistent with
+existing theory for this kind of source, but it's a model choice, not a
+measurement -- it could be wrong or incomplete for shots that don't
+actually follow it.
 
 Output activation is ReLU (not sigmoid, as this file originally used):
 every PFF param's physical lower bound is >= 0 (data_utils.PFF_PARAM_BOUNDS),
@@ -72,43 +73,43 @@ RESULTS_JSON = "pff_training_results_relu_uncertainty.json"
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
 
 
 def pff_nll_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     """
-    Heteroscedastic Gaussian NLL on all 5 parameters; a4/a5 weighted by
+    Heteroscedastic Gaussian NLL on all 6 parameters; a4/a5/a6 weighted by
     normalised a3.
 
-    y_pred is (mu, logvar) concatenated along the last axis, each (B, 5) --
+    y_pred is (mu, logvar) concatenated along the last axis, each (B, 6) --
     see build_model. logvar is clipped before exp() for numerical stability
     early in training when the head is still random.
 
     Continuous weighting (a3_norm in [0,1]) rather than a binary mask, same
     as this file's original masked_pff_loss:
-    - When a3=0 (no bump), a4/a5 contribute 0 gradient — correct, they're undefined.
-    - When bump is small (a3_norm≈0.1), a4/a5 contribute 10% — proportional to
+    - When a3=0 (no bump), a4/a5/a6 contribute 0 gradient — correct, they're undefined.
+    - When bump is small (a3_norm≈0.1), a4/a5/a6 contribute 10% — proportional to
       how much bump position/width actually affects the spectrum, which is the right
       inductive bias.  Binary mask (0 or 1) was tried and degraded spec MSE ~2x.
     """
-    mu = y_pred[:, :5]
-    logvar = tf.clip_by_value(y_pred[:, 5:], -10.0, 10.0)
+    mu = y_pred[:, :6]
+    logvar = tf.clip_by_value(y_pred[:, 6:], -10.0, 10.0)
     sq_err = tf.square(y_true - mu)
-    nll = 0.5 * (tf.exp(-logvar) * sq_err + logvar)         # (B, 5)
+    nll = 0.5 * (tf.exp(-logvar) * sq_err + logvar)         # (B, 6)
 
     a3_w    = y_true[:, 2:3]                                # (B, 1), in [0,1]
     weights = tf.concat(
-        [tf.ones_like(nll[:, :3]), tf.repeat(a3_w, 2, axis=1)],
+        [tf.ones_like(nll[:, :3]), tf.repeat(a3_w, 3, axis=1)],
         axis=1,
-    )                                                        # (B, 5)
+    )                                                        # (B, 6)
     return tf.reduce_mean(nll * weights)
 
 
 def build_model() -> tf.keras.Model:
     """
-    200 -> 512 -> 256 -> 128 -> [5 (ReLU mean), 5 (linear logvar)] FC network
+    200 -> 512 -> 256 -> 128 -> [6 (ReLU mean), 6 (linear logvar)] FC network
     with BatchNorm + ReLU trunk. Output is the two heads concatenated into
-    one 10-wide "pff_params" tensor so pff_nll_loss can see both halves
+    one 12-wide "pff_params" tensor so pff_nll_loss can see both halves
     together (see module docstring for why ReLU + uncertainty).
     """
     inp = tf.keras.Input(shape=(200,), name="detector_response")
@@ -121,18 +122,19 @@ def build_model() -> tf.keras.Model:
     x = tf.keras.layers.Dense(128)(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation("relu")(x)
-    mean = tf.keras.layers.Dense(5, activation="relu", name="pff_mean")(x)
-    logvar = tf.keras.layers.Dense(5, name="pff_logvar")(x)
+    mean = tf.keras.layers.Dense(6, activation="relu", name="pff_mean")(x)
+    logvar = tf.keras.layers.Dense(6, name="pff_logvar")(x)
     out = tf.keras.layers.Concatenate(name="pff_params")([mean, logvar])
     return tf.keras.Model(inp, out, name="pff_regressor")
 
 
 def _pff_batch(energy_bins: np.ndarray, params: np.ndarray) -> np.ndarray:
-    """Vectorised PFF evaluation. params shape (N, 5), returns (N, len(energy_bins))."""
-    a1, a2, a3, a4, a5 = params[:, 0], params[:, 1], params[:, 2], params[:, 3], params[:, 4]
+    """Vectorised PFF evaluation. params shape (N, 6), returns (N, len(energy_bins))."""
+    a1, a2, a3, a4, a5, a6 = (params[:, j] for j in range(6))
     x = energy_bins[np.newaxis, :]           # (1, M)
     brems  = a1[:, None] * np.exp(-a2[:, None] * x)
-    bump   = a3[:, None] * np.exp(-(x - a4[:, None]) ** 2 / a5[:, None])
+    width  = a5[:, None] * x + a6[:, None] / x
+    bump   = a3[:, None] * np.exp(-(x - a4[:, None]) ** 2 / width)
     return brems + bump                      # (N, M)
 
 

@@ -35,16 +35,16 @@ def decode_ensemble(
 
     Parameters
     ----------
-    mus, sigmas : (M, ..., 5) physical-units per-member mean/sigma (already
+    mus, sigmas : (M, ..., 6) physical-units per-member mean/sigma (already
                   decoded via train_pff_bounded_gated.decode_v2 for each
                   member individually)
     p_bumps     : (M, ..., 1) per-member bump-presence probability
 
     Returns
     -------
-    mean          : (..., 5) ensemble mean (mean of the M means)
-    sigma_total   : (..., 5) sqrt(aleatoric_var + epistemic_var)
-    sigma_epistemic : (..., 5) sqrt(epistemic_var) alone -- the part no
+    mean          : (..., 6) ensemble mean (mean of the M means)
+    sigma_total   : (..., 6) sqrt(aleatoric_var + epistemic_var)
+    sigma_epistemic : (..., 6) sqrt(epistemic_var) alone -- the part no
                       single model could have told you; this is the number
                       to watch for "is this shot unfamiliar" checks
     p_bump_mean   : (..., 1) ensemble mean bump probability

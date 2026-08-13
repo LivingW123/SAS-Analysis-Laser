@@ -60,7 +60,7 @@ MODEL_PREFIX = os.environ.get("CNN_MODEL_PREFIX", "model_cnn")
 OUT_DIR      = os.environ.get("CNN_OUT_DIR", "cnn_infer_ensemble")
 
 N_MEMBERS    = 5
-PARAM_NAMES  = ["a1", "a2", "a3", "a4", "a5"]
+PARAM_NAMES  = ["a1", "a2", "a3", "a4", "a5", "a6"]
 N_MC_DRAWS   = 500
 MC_SEED      = 7
 
@@ -138,7 +138,7 @@ def pff_fit_for_signal_ensemble(
     mean, sigma_total, sigma_epi, pb_mean, pb_std = decode_ensemble(mus, sigmas, p_bumps)
 
     mc_rng = np.random.default_rng(MC_SEED)
-    draws = mc_rng.normal(mean, sigma_total, size=(N_MC_DRAWS, 5))
+    draws = mc_rng.normal(mean, sigma_total, size=(N_MC_DRAWS, len(PARAM_NAMES)))
     draws = np.clip(draws, bounds[:, 0], bounds[:, 1])
     mc_spectra = np.stack([pff_func(energy_bins, draws[i]) for i in range(N_MC_DRAWS)])
     band_lo = np.percentile(mc_spectra, 16, axis=0)
