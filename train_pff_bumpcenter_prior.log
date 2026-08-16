@@ -1,0 +1,55 @@
+2026-08-14 02:12:35.985744: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-08-14 02:12:37.840524: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "object"):
+2026-08-14 02:12:51.276810: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Overriding a4 sampling prior: mean=15.0, std=3.0, bounds=[7.0,23.0]  (was [35.0, 25.0, 1.0, 49.0])
+DRM shape: (200, 200)
+Generated 100000 samples in 4.66s
+a4 (bump-present only) sampled range: [7.0, 23.0] MeV, mean=15.0
+  ep  10 | val_loss -1.91520 | spec_mse 2147.49 | rel_mse 80.3204 | 1sig cov 66% (bump 73%) | bump_acc 73%
+           all : a1=113.792 | a2=0.106 | a3=7.059 | a4=3.218 | a5=0.505 | a6=205.753
+           bump: a1=110.574 | a2=0.129 | a3=14.219 | a4=2.535 | a5=0.481 | a6=194.435
+           max sigma: a1=240.67 | a2=0.61 | a3=21.42 | a4=6.52 | a5=0.66 | a6=4205.75
+  ep  20 | val_loss -1.22261 | spec_mse 2778.00 | rel_mse 196.5647 | 1sig cov 65% (bump 69%) | bump_acc 70%
+           all : a1=126.678 | a2=0.109 | a3=5.782 | a4=3.416 | a5=0.536 | a6=236.006
+           bump: a1=123.527 | a2=0.138 | a3=6.926 | a4=2.571 | a5=0.506 | a6=219.206
+           max sigma: a1=343.19 | a2=1.07 | a3=17.19 | a4=6.50 | a5=0.66 | a6=298.75
+  ep  30 | val_loss -0.50490 | spec_mse 3175.10 | rel_mse 238.1262 | 1sig cov 62% (bump 68%) | bump_acc 68%
+           all : a1=133.805 | a2=0.111 | a3=5.970 | a4=3.418 | a5=0.547 | a6=251.393
+           bump: a1=130.813 | a2=0.141 | a3=7.132 | a4=2.560 | a5=0.514 | a6=233.948
+           max sigma: a1=518.75 | a2=1.22 | a3=15.82 | a4=6.50 | a5=0.66 | a6=335.29
+  ep  40 | val_loss 0.20016 | spec_mse 3690.57 | rel_mse 319.8660 | 1sig cov 60% (bump 67%) | bump_acc 68%
+           all : a1=140.171 | a2=0.112 | a3=6.069 | a4=3.277 | a5=0.552 | a6=264.330
+           bump: a1=135.983 | a2=0.142 | a3=7.468 | a4=2.516 | a5=0.518 | a6=247.627
+           max sigma: a1=510.37 | a2=2.38 | a3=15.18 | a4=6.50 | a5=0.66 | a6=461.56
+Epoch 43: early stopping
+
+Stopped at epoch 43  (best epoch: 3)
+Training wall time : 770.8s  (17.93s/epoch)
+a4 MAE (bump only) : 2.344 MeV
+a4 max sigma       : 6.964 MeV
+1-sigma coverage   : a1/a2/a3=72% a4/a5(bump)=79%  (want ~68%)
+Saved model_pff_bumpcenter_proto.keras and pff_training_results_bumpcenter_proto.json
+
+================================================================================
+REAL SHOTS -- a4 (bump centre) prediction, recentred-prior prototype
+================================================================================
+    10084_cv: p(bump)=0.933  a4=  15.30 +/-   6.50 MeV
+    10084_ch: p(bump)=0.904  a4=  18.13 +/-   6.50 MeV
+    11696_cv: p(bump)=0.000  a4=   1.00 +/-   6.50 MeV
+    11696_ch: p(bump)=1.000  a4=  12.60 +/-   6.50 MeV
+    11705_cv: p(bump)=1.000  a4=  21.37 +/-   6.50 MeV
+    11705_ch: p(bump)=1.000  a4=  24.57 +/-   6.50 MeV
+    11707_cv: p(bump)=1.000  a4=  16.80 +/-   6.50 MeV
+    11707_ch: p(bump)=1.000  a4=  18.60 +/-   6.50 MeV
+    11716_cv: p(bump)=0.424  a4=  15.65 +/-   6.50 MeV
+    11716_ch: p(bump)=0.097  a4=  15.62 +/-   6.50 MeV
+    11733_cv: p(bump)=0.850  a4=  17.01 +/-   6.50 MeV
+    11733_ch: p(bump)=0.913  a4=  17.31 +/-   6.50 MeV
+    11698_cv: p(bump)=0.922  a4=  14.63 +/-   6.50 MeV
+    11698_ch: p(bump)=0.989  a4=  13.57 +/-   6.50 MeV
+Saved pff_bumpcenter_proto_real_shots.csv
+
+Total wall time: 783.1s

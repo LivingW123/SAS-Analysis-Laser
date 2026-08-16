@@ -78,9 +78,16 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 XLSX_PATH     = "res/drm/200x200.xlsx"
 N_SAMPLES     = 500_000   # attempt 4's budget -- best accuracy-per-compute-dollar this session
 BUMP_FRACTION = 0.5
-MAX_EPOCHS    = 500
+MAX_EPOCHS    = 200
 BATCH_SIZE    = 64
-PATIENCE      = 80
+# PATIENCE trimmed from 80 -> 25 (and MAX_EPOCHS 500 -> 200, reduce_lr patience
+# 15 -> 10 below): every member trained this session hit its best epoch by
+# epoch 1-5, then EarlyStopping(patience=80) waited out up to 80 more
+# essentially-wasted epochs before stopping -- member 3 alone burned 23416s
+# this way. train_pff_v4_bumpcenter.py's prototype with patience=25 landed at
+# the same best-epoch-1 outcome in 2007s. Matched here so all 5 members are
+# trained under identical settings (needed for a fair ensemble comparison).
+PATIENCE      = 25
 BASE_SEED     = 42
 LEARNING_RATE = 2e-4
 
@@ -132,7 +139,7 @@ if __name__ == "__main__":
         monitor="val_loss", patience=PATIENCE, restore_best_weights=False, verbose=1
     )
     reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-        monitor="val_loss", factor=0.5, patience=15, min_lr=1e-5, verbose=0
+        monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5, verbose=0
     )
 
     t_train_start = time.perf_counter()

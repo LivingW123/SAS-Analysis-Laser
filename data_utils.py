@@ -15,22 +15,45 @@ import scipy.optimize as optimize
 # 6-parameter form (was 5): the bump denominator a5 (a fixed width) became an
 # energy-dependent width a5*x + a6/x -- a5 now dominates at high energy
 # (width ~ a5*x), a6 dominates at low energy (width ~ a6/x), per explicit
-# request. This changes what "a5" physically means (no longer a fixed width
-# in the old [5,100] range) and introduces a6 with no prior calibration --
-# the mean/std/lo/hi below are a placeholder chosen so that at a
-# representative mid-range energy (x=20 MeV) the two terms contribute
-# roughly equally and sum to the old typical width (~40): a5=1 -> a5*20=20,
-# a6=400 -> a6/20=20. NOT independently validated against real shots or any
-# physics reference -- flag for review if specific ranges are known.
-# Columns: [mean, std, lo, hi] used for bounded-normal sampling.
+# request. Columns: [mean, std, lo, hi] used for bounded-normal sampling.
 # a3 (bump amplitude) bounds are for the bump-present case; set to 0 for no-bump.
+#
+# a4/a5/a6 recalibrated together after a real-shot investigation found the
+# original a4 prior (mean=35, std=25 over [1,49]) barely overlapped the
+# physically expected 10-20 MeV bump-centre window, AND that a4 was only
+# weakly identifiable from real detector signals with the old a5/a6 bounds
+# ([0.1,5]/[20,1000]) regardless of prior: a prior-free profile-likelihood
+# scan (bump_center_profile_likelihood.py) found only 2/12 real bump-present
+# shots had their unconstrained best-fit a4 inside [10,20], with residual
+# nearly flat across most of the 1-49 MeV range and several shots pinning at
+# the 49 MeV grid edge. Forcing a4 into [10,20] and refitting the rest
+# (refine_bump_center_optimizer.py) showed why: a3 and a5 would run to their
+# ceilings (100, 5) to compensate, turning the "bump" into a broad term that
+# impersonates the bremsstrahlung background instead of a localized peak --
+# a genuine degeneracy, not just a training-prior mismatch.
+# a5/a6's new bounds are chosen so the width term a5*x + a6/x, evaluated
+# across the a4 in [10,20] window, matches matlab/PFF.m's own earlier
+# calibration of this DRM: its commented-out constant-width 5-param fit
+# (a3*exp(-(x-a4)^2/a5)) used a5 in [5,15] (x0=8) -- i.e. sigma ~ 1.6-2.7 MeV
+# (sigma = sqrt(a5/2)). With a5_new mean=0.1, a6_new mean=90, w(x) = a5*x +
+# a6/x comes to ~10 at x=10, ~7.5 at x=15, ~6.5 at x=20 -- squarely in that
+# same calibrated range and stable across the window, instead of the old
+# bounds' unconstrained blow-up. See bump_center_profile_likelihood.py for
+# the before/after check confirming this actually resolves the degeneracy
+# (it doesn't fully -- see that script's summary CSV for the current state).
+# NOTE: sample_multibump_spectra's older 3-param bump form also reads a5 from
+# this table (see _sample_bump_params_vec) but with the OLD constant-width
+# meaning (units MeV^2, was calibrated for [5,100]) -- it is currently unused
+# by any active training script, so repurposing this row for the 6-param
+# model's a5*x coefficient doesn't affect anything live, but would need its
+# own row/rescaling if that function is ever wired back up.
 PFF_PARAM_SAMPLING = np.array([
     [200.0, 200.0, 0.1,  500.0],   # a1 — bremsstrahlung amplitude
     [0.25,  0.2,   0.01,   1.0],   # a2 — bremsstrahlung decay rate (1/MeV)
     [8.0,   10.0,  5.0,  100.0],   # a3 — bump amplitude (bump-present lo = 5)
-    [35.0,  25.0,  1.0,   49.0],   # a4 — bump centre (MeV)
-    [1.0,   0.6,   0.1,    5.0],   # a5 — bump width, high-energy (a5*x) coefficient [PLACEHOLDER]
-    [400.0, 250.0, 20.0, 1000.0],  # a6 — bump width, low-energy (a6/x) coefficient [PLACEHOLDER]
+    [15.0,  3.0,   7.0,   23.0],   # a4 — bump centre (MeV); recentred on the physically expected [10,20]
+    [0.1,   0.05,  0.02,   0.3],   # a5 — bump width, high-energy (a5*x) coefficient
+    [90.0,  40.0,  30.0, 200.0],   # a6 — bump width, low-energy (a6/x) coefficient
 ])
 # a2's hi was originally 5.0 /MeV, which after binning + L1-normalization
 # collapses ~13% of "spectra" to a single near-delta bin (median a2 for
@@ -40,13 +63,16 @@ PFF_PARAM_SAMPLING = np.array([
 
 # Absolute bounds used for [0,1] normalization of parameters.
 # No-bump samples have a3=0, which maps to 0.0 after normalization.
+# a4/a5/a6 bounds tightened alongside PFF_PARAM_SAMPLING above -- padded a
+# little beyond the sampling lo/hi so a real shot landing just outside the
+# training prior isn't clipped exactly at the wall it was trained on.
 PFF_PARAM_BOUNDS = np.array([
     [0.1,  500.0],   # a1
     [0.01,   1.0],   # a2
     [0.0,  100.0],   # a3
-    [1.0,   49.0],   # a4
-    [0.1,    5.0],   # a5 [PLACEHOLDER, see PFF_PARAM_SAMPLING]
-    [20.0, 1000.0],  # a6 [PLACEHOLDER, see PFF_PARAM_SAMPLING]
+    [5.0,   30.0],   # a4
+    [0.02,   0.3],   # a5
+    [30.0, 200.0],   # a6
 ])
 
 
