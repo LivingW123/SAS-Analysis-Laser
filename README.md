@@ -146,3 +146,71 @@ scale wins.
 - `infer_cnn.py` — per-shot 3-panel diagnostic figures (detector response reconstruction,
   predicted spectrum, channel residuals), plus a saturation-masked variant when a
   correction mask is available. Writes `cnn_infer_<shot>_n<n_bins>[_unsat].png`.
+
+## PFF Parameter Regressor Pipeline
+
+A third model family, alongside the FC classifier and CNN spectrum regressor above:
+instead of a full spectrum, this directly regresses the 6 parameters of the PFF
+functional form (`a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x+a6/x))`, see `data_utils.py`)
+with per-parameter predictive uncertainty. Only the current, final model is kept on
+disk (`model_pff_ensemble_0-4.keras` / `pff_training_results_ensemble_{0-4}.json`,
+a 5-member deep ensemble); every earlier generation below was deleted once this
+history was condensed here — see each version's own `train_pff*.log` (still on disk)
+for full metrics, and `CLAUDE.md` for the deeper investigation notes that don't belong
+in a usage README.
+
+### Architecture history
+
+Each generation fixed a specific real-shot failure mode the previous one exposed:
+
+| Version | Script | Key change | Real-shot problem it fixed (or introduced) |
+| --- | --- | --- | --- |
+| v1 | `train_pff.py` | ReLU mean + heteroscedastic-NLL logvar, hard clip at ±10 | baseline; sigma saturated at the clip ceiling on real (OOD) shots (e.g. a3 = ±14841) |
+| v2 | `train_pff_bounded_gated.py` | tanh-bounded logvar (caps sigma_norm ~7.4 vs ~148.4) + gated bump classifier (explicit `p(bump)` head, since a3 is bimodal — exactly 0 or in [5,100]) | fixed the hard-clip saturation; but sigma/p(bump) came out bit-for-bit identical across all 14 real shots — saturating at one fixed output corner regardless of input |
+| v3 | `train_pff_v3_realistic_noise.py` | same v2 architecture, training-data generator switched from plain sqrt(response) Poisson noise to the calibrated noise+saturation model (`generate_pff_training_data`) | real shots have 0-92/200 saturation-corrected channels the old generator never modeled; closing that gap is what finally made `p(bump)` vary meaningfully by shot (0.001-1.000) instead of a flat 1.000 |
+| ensemble | `train_pff_ensemble_member.py` | 5 independently-initialized/seeded v3 models, combined via `pff_ensemble_utils.decode_ensemble` (law of total variance) | a single model has no way to signal "I've never seen anything like this input"; cross-member disagreement gives a genuine epistemic-uncertainty signal, confirmed ~1.7-2x higher on real shots than on in-distribution synthetic data |
+
+### v3 sample-size sweep
+
+`train_pff_v3_realistic_noise.py` was re-run at increasing `N_SAMPLES` (all other
+config fixed) to find the accuracy/compute sweet spot:
+
+| Samples | Wall time | Outcome |
+| --- | --- | --- |
+| 20k (attempt 1) | 148s | plateaued almost immediately; every metric worse than v2 |
+| 60k (attempt 2) | 218s | every metric improved substantially (rel-MSE ~96x better, 1σ coverage 52/35%→75/63%); best checkpoint still epoch 4 — a better early optimum, not longer training |
+| 200k (attempt 3) | 2651s | improved again (coverage 65/47%, best MAE); ~12x time for 3.3x data — likely partly run-to-run noise, not a clean scaling law |
+| 500k (attempt 4) | 5928s | modest mixed improvement, coverage 65%→72% (now slightly over- rather than under-covering); time scaled ~linearly from attempt 3 — **best accuracy-per-compute-dollar**, used for every ensemble since |
+| 1M (attempt 5) | 33051s | diminishing/negative returns; not used further |
+
+### Ensemble generations
+
+Three full 5-member ensembles have been trained on this project; only the current one
+survives on disk:
+
+1. **5-param** (`train_pff_ensemble_all.log`) — original constant-width bump term
+   (single `a5`). `PATIENCE=80` was badly oversized: every member's true optimum landed
+   at epoch 1-5 of ~83-85 run, but `EarlyStopping` then waited out up to 80 more mostly
+   wasted epochs — member 3 alone burned 23416s this way.
+2. **6-param, uncalibrated priors** (`train_pff_ensemble_6param_all.log`) — bump
+   denominator generalised to the energy-dependent `a5*x + a6/x`. `a4` (bump centre)
+   sampling prior was mean=35/std=25 over [1,49] MeV, and `a5`/`a6` bounds were an
+   explicitly-flagged, unvalidated placeholder. On the 14 real shots this project
+   tracks, `a4` predictions scattered 1.0-43.7 MeV with sigma 6.5-13.4 MeV.
+3. **6-param, recalibrated priors (current)** — `a4` recentred to mean=15/std=3 over
+   [10,20] MeV; `a5`/`a6` tightened to match `matlab/PFF.m`'s own old constant-width
+   calibration (`a5 ∈ [5,15]`, i.e. σ≈1.6-2.7 MeV). `PATIENCE` also trimmed 80→25,
+   matching where every member's optimum actually lands (avoids generation 1's wasted
+   compute — this generation's 5 members ran 27-29 epochs each, 1735-2081s). Real-shot
+   `a4` now clusters 14.3-19.8 MeV. Full derivation and the identifiability caveats that
+   go with it are in `CLAUDE.md`.
+
+### Verification
+
+- `evaluate_pff_ensemble.py` — runs all 5 members on the 14 real shots + a synthetic
+  in-distribution batch, decomposes aleatoric vs. epistemic variance per parameter, and
+  checks that epistemic variance is genuinely higher on real (OOD) shots. Writes
+  `pff_ensemble_eval.csv` and `pff_ensemble_epistemic_check.png`.
+- `infer_cnn_ensemble.py` — same real-shot diagnostic figure as `infer_cnn.py`, with a
+  4th panel driven by the PFF ensemble (mean ± total sigma, aleatoric/epistemic split,
+  `p(bump)` ± its cross-member std). Writes to `cnn_infer_ensemble/`.
