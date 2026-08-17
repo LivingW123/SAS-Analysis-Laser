@@ -29,3 +29,4 @@ infer_cnn_n50_pff_cv.log
 infer_cnn_n50_pff.log
 train_pff_relu_uncertainty.log
 train_pff_restore_original.log
+CLAUDE.md

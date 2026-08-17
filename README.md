@@ -6,18 +6,53 @@ Neural network pipeline for identifying photon energy bins from a Geant4 Scintil
 
 The 200×200 DRM maps incident photon energy (0–50 MeV in 200 bins of 0.25 MeV each) to detector channel responses. Given a noisy 200-channel detector reading, the goal is to classify which energy bin produced it. This is an ML alternative to the TSVD unfolding approach in `TSVD_NN.m`.
 
+## Layout
+
+Code lives under `src/`, generated artifacts (models, results, figures) under `out/`, mirroring `src/`'s structure one level deep:
+
+```
+src/
+  core/            data_utils.py + shared model/decode definitions (cnn_model.py, pff_model.py,
+                   pff_ensemble_utils.py, real_shots.py) used across training/inference/comparisons/optimizers
+  training/
+    dnn/           plain dense (fully-connected) models: train_dnn_mev.py, train_dnn_spectrum.py
+    cnn/           Conv2D-based spectrum regressor: train_cnn.py + chunked variants
+    pff/           PFF parameter regressor generations, see its own section below
+  inference/       infer_cnn_ensemble.py, infer_spectrum.py
+  comparisons/     evaluate_pff_ensemble.py, peak_table.py, cnn_real_shot_examples.py,
+                   pff_domain_gap_check.py, nnls_refine.py
+  optimizers/      refine_bump_center_optimizer.py, bump_center_profile_likelihood.py,
+                   noise_sweep.py, noise_sweep_multiseed.py
+  visualization/   visualize_mev.py
+  testing/         prep_tpw_data.py + test_dnn_tpw.py (the TPW real-shot dataset — extract/prep,
+                   then test), test_dnn_11733.py
+
+out/               mirrors src/ (out/training/dnn, out/training/cnn, out/training/pff, out/inference,
+                   out/comparisons, out/optimizers, out/visualization, out/testing) + out/_unsorted/
+                   for pre-refactor artifacts with no producing script.
+```
+
+Every script runs as a module from the repo root, e.g. `python -m src.training.dnn.train_dnn_mev` — this
+keeps `cwd` at the repo root regardless of a script's nesting depth, so relative input paths like
+`res/drm/200x200.xlsx` are unaffected.
+
+Raw/reference data — `res/`, `TPW/`, `matlab/`, `sasdeconsoftware/`, `"CSU ALEPH 2025 - Liang/"`, `env/` —
+and the two data-prep notebooks (`gen_train_data.ipynb`, `rescale_vector.ipynb`) stay at the repo root,
+outside `src/`/`out/`. Training/run logs (`*.log`) also stay at the repo root — this project keeps them as
+a permanent record (several are cited directly in `CLAUDE.md` and in this README's PFF section).
+
 ## Files
 
 | File                 | Purpose                                                                    |
 | -------------------- | -------------------------------------------------------------------------- |
-| `data_utils.py`    | DRM loading, energy binning, synthetic spectrum/noise/saturation generation, normalization |
-| `train_mev.py`     | TensorFlow FC classifier training for n = 10, 20, 50, 100, 200 bins        |
-| `visualize_mev.py` | All matplotlib figures                                                     |
-| `train_cnn.py`     | CNN spectrum-regression training (in-memory), see below                    |
-| `train_cnn_chunk.py` / `train_cnn_chunk_converge.py` | Resumable/chunked CNN training for large sample counts or time-limited environments |
-| `infer_cnn.py`     | Per-shot diagnostic figures (predicted vs. real detector response, residuals) |
-| `peak_table.py`    | Tabulates the CNN's predicted spectral peak across real shots and CSV variants |
-| `noise_sweep.py`   | Grid/random search over the detector-noise model (see `NOISE_SEARCH_PLAN.md`) |
+| `src/core/data_utils.py`    | DRM loading, energy binning, synthetic spectrum/noise/saturation generation, normalization |
+| `src/training/dnn/train_dnn_mev.py`     | TensorFlow FC classifier training for n = 10, 20, 50, 100, 200 bins        |
+| `src/visualization/visualize_mev.py` | All matplotlib figures                                                     |
+| `src/training/cnn/train_cnn.py`     | CNN spectrum-regression training (in-memory), see below                    |
+| `src/training/cnn/train_cnn_chunk.py` / `train_cnn_chunk_converge.py` | Resumable/chunked CNN training for large sample counts or time-limited environments |
+| `src/inference/infer_cnn_ensemble.py` | Per-shot diagnostic figures (predicted vs. real detector response, residuals, PFF ensemble fit) |
+| `src/comparisons/peak_table.py`    | Tabulates the CNN's predicted spectral peak across real shots and CSV variants |
+| `src/optimizers/noise_sweep.py`   | Grid/random search over the detector-noise model |
 | `res/test_images/` | Real shot data, one folder per 5-digit shot number (see its own README)    |
 | `200x200.xlsx`     | Geant4 detector response matrix (200 energy bins × 200 detector channels) |
 | `TSVD_NN.m`        | MATLAB TSVD unfolding reference implementation                             |
@@ -33,25 +68,27 @@ pip install tensorflow numpy pandas openpyxl scikit-learn matplotlib
 
 ```bash
 # Train all four models (n = 10, 20, 50, 100 energy bins)
-python train_mev.py
+python -m src.training.dnn.train_dnn_mev
 
-# Generate all figures (requires training_results.json from above)
-python visualize_mev.py
+# Generate all figures (requires out/training/dnn/dnn_mev_training_results.json from above)
+python -m src.visualization.visualize_mev
 
 # Pre-training figures only (DRM overview, binned DRM, noise examples)
-python visualize_mev.py --pre
+python -m src.visualization.visualize_mev --pre
 ```
 
 ## Pipeline Overview
 
-### 1. Data (`data_utils.py`)
+### 1. Data (`src/core/data_utils.py`)
 
 - **DRM orientation**: xlsx rows = energy bins, cols = detector channels; transposed on load so `drm.shape = (200, 200)` with rows = detector channels, cols = energy bins.
 - **`bin_drm(drm, n)`**: averages every `200/n` consecutive energy-bin columns → `(200, n)` matrix. Valid n values: 10, 20, 50, 100 (all divide 200).
 - **Synthetic noise**: for each of the n energy-bin columns, draws 100 noisy realizations with per-pixel Gaussian noise σ = √I (Poisson statistics).
 - **Normalization**: per-channel z-score computed from training split, applied to train and val sets.
 
-### 2. Training (`train_mev.py`)
+### 2. Training (`src/training/dnn/train_dnn_mev.py`)
+
+A plain dense (fully-connected) network — "DNN" — as opposed to the Conv2D-based CNN family below.
 
 | Parameter      | Value                                                       |
 | -------------- | ----------------------------------------------------------- |
@@ -63,7 +100,7 @@ python visualize_mev.py --pre
 
 Logged per epoch: train/val loss, accuracy, macro precision, macro recall (efficiency), macro F1.
 
-### 3. Figures (`figures/`)
+### 3. Figures (`out/visualization/figures/`)
 
 | Figure                     | Description                                               |
 | -------------------------- | --------------------------------------------------------- |
@@ -78,24 +115,26 @@ Logged per epoch: train/val loss, accuracy, macro precision, macro recall (effic
 
 ## Outputs
 
-Training produces the following (gitignored):
+Training produces the following, under `out/training/dnn/` (gitignored):
 
 ```
-model_mev_n10.keras   model_mev_n20.keras   model_mev_n50.keras   model_mev_n100.keras   model_mev_n200.keras
+model_dnn_mev_n10.keras   model_dnn_mev_n20.keras   model_dnn_mev_n50.keras   model_dnn_mev_n100.keras   model_dnn_mev_n200.keras
 results_n10_confusion.npy  ...  results_n200_confusion.npy
-training_results.json
+dnn_mev_training_results.json
 ```
 
 ## CNN Spectrum Regression Pipeline
 
 A second, more capable model alongside the FC classifier above: instead of classifying
-a single energy bin, `train_cnn.py` regresses the full L1-normalised spectrum (softmax
+a single energy bin, `src/training/cnn/train_cnn.py` regresses the full L1-normalised spectrum (softmax
 over n bins) from a 5×48 image built by reshaping the 200-channel detector vector (rows
 0-3 = channels 0-191 reshaped to 4×48, row 4 = the last 8 channels each tiled ×6).
 Training data is synthetic PFF spectra (single bremsstrahlung exponential + optional
-Gaussian bump, `sample_pff_spectra`) forward-projected through the DRM.
+Gaussian bump, `sample_pff_spectra`) forward-projected through the DRM. The model
+architecture (`build_model`) and the 200→5×48 reshape (`reshape_to_2d`) live in
+`src/core/cnn_model.py`, shared with every other script that needs this CNN's definition.
 
-### Training-data augmentation (`data_utils.py`)
+### Training-data augmentation (`src/core/data_utils.py`)
 
 Two augmentations were added on top of the base Poisson-noise generator so the training
 distribution better matches real shots, both applied in `generate_spectrum_batch`:
@@ -110,15 +149,17 @@ distribution better matches real shots, both applied in `generate_spectrum_batch
   `NOISE_GAIN=1.0, READ_FRAC=0.0, MULT_FRAC=0.0` reproduces the old pure-Poisson behaviour.
 
   The current defaults (`NOISE_GAIN=5.0, READ_FRAC=0.10, MULT_FRAC=0.0`) were chosen by
-  `noise_sweep.py`'s search (90-trial grid → 40-trial refinement → 3-seed robustness
+  `src/optimizers/noise_sweep.py`'s search (90-trial grid → 40-trial refinement → 3-seed robustness
   check on the top candidates), scoring each config by how close the trained CNN's
   real-shot residual gets to the NNLS-fit floor (the best any spectrum could achieve
-  for that shot's DRM/vector, independent of the model). Full methodology, the scoring
-  rationale, and how to rerun/re-tune the search are in `NOISE_SEARCH_PLAN.md`. This
+  for that shot's DRM/vector, independent of the model). This
   retrain dropped several shots' residuals substantially (e.g. shot 11707: 72.5%→29.6%)
   and tightened the spread across shots overall, at the cost of lower peak-confidence
   (softmax max) predictions — the model now outputs smoother, less sharply-peaked
-  spectra, consistent with training on noisier synthetic data.
+  spectra, consistent with training on noisier synthetic data. (The methodology writeup
+  this was originally drawn from, `NOISE_SEARCH_PLAN.md`, no longer exists in the repo —
+  the parameters above and `src/optimizers/noise_sweep.py`/`noise_sweep_multiseed.py`'s own
+  code are the current source of truth for how to rerun/re-tune the search.)
 
 ### Training scripts
 
@@ -139,29 +180,32 @@ scale wins.
 
 ### Verification
 
-- `peak_table.py` — tabulates the predicted spectral peak (MeV, softmax weight, DRM
+- `src/comparisons/peak_table.py` — tabulates the predicted spectral peak (MeV, softmax weight, DRM
   reconstruction residual) per shot across CSV variants (`_proc_vector.csv` uncorrected,
   `_proc_vector_ch.csv` Matthew Price's horizontal correction); writes
-  `cnn_peak_table_n{N}.csv`.
-- `infer_cnn.py` — per-shot 3-panel diagnostic figures (detector response reconstruction,
-  predicted spectrum, channel residuals), plus a saturation-masked variant when a
-  correction mask is available. Writes `cnn_infer_<shot>_n<n_bins>[_unsat].png`.
+  `out/comparisons/cnn_peak_table_n{N}.csv`.
+- `src/inference/infer_cnn_ensemble.py` — per-shot 4-panel diagnostic figures (detector response
+  reconstruction, predicted spectrum, channel residuals, PFF ensemble fit); see the PFF
+  Parameter Regressor Pipeline section below for the 4th panel. Writes into
+  `out/inference/cnn_infer_ensemble/`.
 
 ## PFF Parameter Regressor Pipeline
 
 A third model family, alongside the FC classifier and CNN spectrum regressor above:
 instead of a full spectrum, this directly regresses the 6 parameters of the PFF
-functional form (`a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x+a6/x))`, see `data_utils.py`)
+functional form (`a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x+a6/x))`, see `src/core/data_utils.py`)
 with per-parameter predictive uncertainty. Only the current, final model is kept on
-disk (`model_pff_ensemble_0-4.keras` / `pff_training_results_ensemble_{0-4}.json`,
+disk (`out/training/pff/model_pff_ensemble_0-4.keras` / `pff_training_results_ensemble_{0-4}.json`,
 a 5-member deep ensemble); every earlier generation below was deleted once this
-history was condensed here — see each version's own `train_pff*.log` (still on disk)
-for full metrics, and `CLAUDE.md` for the deeper investigation notes that don't belong
+history was condensed here — see each version's own `train_pff*.log` (still at the repo
+root) for full metrics, and `CLAUDE.md` for the deeper investigation notes that don't belong
 in a usage README.
 
 ### Architecture history
 
-Each generation fixed a specific real-shot failure mode the previous one exposed:
+Each generation fixed a specific real-shot failure mode the previous one exposed. All
+five live under `src/training/pff/`; the shared architecture/loss/decode definitions
+they build on (from v2 onward) live in `src/core/pff_model.py`:
 
 | Version | Script | Key change | Real-shot problem it fixed (or introduced) |
 | --- | --- | --- | --- |
@@ -186,7 +230,7 @@ config fixed) to find the accuracy/compute sweet spot:
 ### Ensemble generations
 
 Three full 5-member ensembles have been trained on this project; only the current one
-survives on disk:
+survives on disk (`out/training/pff/`):
 
 1. **5-param** (`train_pff_ensemble_all.log`) — original constant-width bump term
    (single `a5`). `PATIENCE=80` was badly oversized: every member's true optimum landed
@@ -207,10 +251,11 @@ survives on disk:
 
 ### Verification
 
-- `evaluate_pff_ensemble.py` — runs all 5 members on the 14 real shots + a synthetic
+- `src/comparisons/evaluate_pff_ensemble.py` — runs all 5 members on the 14 real shots + a synthetic
   in-distribution batch, decomposes aleatoric vs. epistemic variance per parameter, and
   checks that epistemic variance is genuinely higher on real (OOD) shots. Writes
-  `pff_ensemble_eval.csv` and `pff_ensemble_epistemic_check.png`.
-- `infer_cnn_ensemble.py` — same real-shot diagnostic figure as `infer_cnn.py`, with a
-  4th panel driven by the PFF ensemble (mean ± total sigma, aleatoric/epistemic split,
-  `p(bump)` ± its cross-member std). Writes to `cnn_infer_ensemble/`.
+  `out/comparisons/pff_ensemble_eval.csv` and `out/comparisons/pff_ensemble_epistemic_check.png`.
+- `src/inference/infer_cnn_ensemble.py` — same real-shot diagnostic figure as the CNN pipeline's
+  verification script above, with a 4th panel driven by the PFF ensemble (mean ± total sigma,
+  aleatoric/epistemic split, `p(bump)` ± its cross-member std). Writes to
+  `out/inference/cnn_infer_ensemble/`.

@@ -618,8 +618,10 @@ def pff_mean_sigma(pff_out: np.ndarray, param_bounds: np.ndarray) -> tuple[np.nd
 # noise usually also has a read/dark floor and can be over- or under-dispersed
 # relative to sqrt(N). These knobs let a sweep find the level that best matches
 # the real shots. gain=1.0/read=0.0/mult=0.0 reproduces the original pure-Poisson
-# behaviour; the defaults below are the winner of NOISE_SEARCH_PLAN.md's search
-# (grid -> refine -> 3-seed verification against the NNLS floor on real shots).
+# behaviour; the defaults below are the winner of that search (grid -> refine ->
+# 3-seed verification against the NNLS floor on real shots) -- see
+# src/optimizers/noise_sweep.py and noise_sweep_multiseed.py for the search
+# itself (the methodology writeup this once referenced no longer exists).
 #
 #   sigma_i = sqrt( (READ_FRAC * peak)^2  +  NOISE_GAIN * response_i
 #                    + (MULT_FRAC * response_i)^2 )

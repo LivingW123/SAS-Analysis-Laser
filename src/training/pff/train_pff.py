@@ -1,0 +1,376 @@
+"""
+TensorFlow FC regressor for full PFF spectral parameter estimation.
+
+Input  : 200-channel z-score-normalized detector response
+Output : 6 PFF parameters [a1, a2, a3, a4, a5, a6] normalized to [0, 1] (mean),
+         plus a per-parameter log-variance (uncertainty) -- see below.
+Loss   : heteroscedastic Gaussian NLL — a4/a5/a6 terms are weighted by
+         normalized a3, so bump-position/width contribute nothing when a3=0.
+
+The PFF model itself (a1*exp(-a2*x) + a3*exp(-(x-a4)^2/(a5*x+a6/x)), a
+bremsstrahlung continuum plus an optional Gaussian bump with an
+energy-dependent width) is an assumed physical family, consistent with
+existing theory for this kind of source, but it's a model choice, not a
+measurement -- it could be wrong or incomplete for shots that don't
+actually follow it.
+
+Output activation is ReLU (not sigmoid, as this file originally used):
+every PFF param's physical lower bound is >= 0 (data_utils.PFF_PARAM_BOUNDS),
+so ReLU is the natural nonnegativity constraint. Unlike sigmoid it doesn't
+hard-cap the output at the training distribution's upper bound -- predictions
+can exceed 1.0 in normalized space (extrapolate past the training range)
+instead of saturating there.
+
+Point estimates alone don't say how much to trust a given shot's fit, so a
+second linear head predicts log-variance alongside the ReLU mean, trained
+with a heteroscedastic Gaussian NLL (pff_nll_loss) -- the standard
+aleatoric-uncertainty construction (Kendall & Gal 2017). This gives an
+actual predictive sigma per parameter (see data_utils.pff_mean_sigma for
+decoding it to physical units), not just |pred - true| after the fact, and
+its calibration (does the 1-sigma band actually cover ~68% of true values)
+is checked directly by PFFMetricsCallback below and by infer_cnn.py's
+synthetic calibration check (real shots have no ground-truth params to
+compare against).
+"""
+
+import json
+import os
+import time
+
+import numpy as np
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+
+from src.core.data_utils import (
+    PFF_PARAM_BOUNDS,
+    denormalize_pff_params,
+    generate_pff_training_data,
+    load_drm,
+    mev_bin_centers,
+    normalize_apply,
+    normalize_fit,
+    normalize_pff_params,
+    pff_func,
+    pff_mean_sigma,
+)
+
+# Config
+XLSX_PATH     = "res/drm/200x200.xlsx"
+N_SAMPLES     = 20_000
+BUMP_FRACTION = 0.5      # half the data has a real Gaussian bump
+MAX_EPOCHS    = 300
+BATCH_SIZE    = 64
+PATIENCE      = 40
+SEED          = 42
+LEARNING_RATE = 2e-4     # 5e-4 still oscillated; clipnorm added below
+
+OUT_DIR = "out/training/pff"
+
+# Distinct filenames from the original sigmoid/MSE model (model_pff.keras,
+# pff_training_results.json, restored from git HEAD after this file's ReLU +
+# uncertainty rework overwrote them in place) so re-running this script never
+# clobbers that restored file again.
+MODEL_PATH   = os.path.join(OUT_DIR, "model_pff_relu_uncertainty.keras")
+RESULTS_JSON = os.path.join(OUT_DIR, "pff_training_results_relu_uncertainty.json")
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+PARAM_NAMES = ["a1", "a2", "a3", "a4", "a5", "a6"]
+
+
+def pff_nll_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    """
+    Heteroscedastic Gaussian NLL on all 6 parameters; a4/a5/a6 weighted by
+    normalised a3.
+
+    y_pred is (mu, logvar) concatenated along the last axis, each (B, 6) --
+    see build_model. logvar is clipped before exp() for numerical stability
+    early in training when the head is still random.
+
+    Continuous weighting (a3_norm in [0,1]) rather than a binary mask, same
+    as this file's original masked_pff_loss:
+    - When a3=0 (no bump), a4/a5/a6 contribute 0 gradient — correct, they're undefined.
+    - When bump is small (a3_norm≈0.1), a4/a5/a6 contribute 10% — proportional to
+      how much bump position/width actually affects the spectrum, which is the right
+      inductive bias.  Binary mask (0 or 1) was tried and degraded spec MSE ~2x.
+    """
+    mu = y_pred[:, :6]
+    logvar = tf.clip_by_value(y_pred[:, 6:], -10.0, 10.0)
+    sq_err = tf.square(y_true - mu)
+    nll = 0.5 * (tf.exp(-logvar) * sq_err + logvar)         # (B, 6)
+
+    a3_w    = y_true[:, 2:3]                                # (B, 1), in [0,1]
+    weights = tf.concat(
+        [tf.ones_like(nll[:, :3]), tf.repeat(a3_w, 3, axis=1)],
+        axis=1,
+    )                                                        # (B, 6)
+    return tf.reduce_mean(nll * weights)
+
+
+def build_model() -> tf.keras.Model:
+    """
+    200 -> 512 -> 256 -> 128 -> [6 (ReLU mean), 6 (linear logvar)] FC network
+    with BatchNorm + ReLU trunk. Output is the two heads concatenated into
+    one 12-wide "pff_params" tensor so pff_nll_loss can see both halves
+    together (see module docstring for why ReLU + uncertainty).
+    """
+    inp = tf.keras.Input(shape=(200,), name="detector_response")
+    x = tf.keras.layers.Dense(512)(inp)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    x = tf.keras.layers.Dense(256)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    x = tf.keras.layers.Dense(128)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    mean = tf.keras.layers.Dense(6, activation="relu", name="pff_mean")(x)
+    logvar = tf.keras.layers.Dense(6, name="pff_logvar")(x)
+    out = tf.keras.layers.Concatenate(name="pff_params")([mean, logvar])
+    return tf.keras.Model(inp, out, name="pff_regressor")
+
+
+def _pff_batch(energy_bins: np.ndarray, params: np.ndarray) -> np.ndarray:
+    """Vectorised PFF evaluation. params shape (N, 6), returns (N, len(energy_bins))."""
+    a1, a2, a3, a4, a5, a6 = (params[:, j] for j in range(6))
+    x = energy_bins[np.newaxis, :]           # (1, M)
+    brems  = a1[:, None] * np.exp(-a2[:, None] * x)
+    width  = a5[:, None] * x + a6[:, None] / x
+    bump   = a3[:, None] * np.exp(-(x - a4[:, None]) ** 2 / width)
+    return brems + bump                      # (N, M)
+
+
+class PFFMetricsCallback(tf.keras.callbacks.Callback):
+    """
+    Per-parameter MAE (split bump / no-bump), spectrum metrics, and
+    uncertainty-calibration metrics each epoch.
+
+    Metrics logged:
+      mae_{param}       — MAE over all val samples (predicted mean vs. true)
+      mae_{param}_bump  — MAE restricted to bump samples (a3 > 0)
+      spectrum_mse      — absolute MSE of reconstructed PFF curve (using the mean)
+      spectrum_rel_mse  — MSE normalised by true spectrum² (catches bump-region errors)
+      coverage_1sigma   — fraction of a1/a2/a3 true values inside the predicted
+                          +/-1-sigma band; should sit near 68% if the
+                          heteroscedastic NLL has learned a meaningful sigma
+                          rather than a decorative one
+      coverage_1sigma_bump — same, for a4/a5 restricted to bump samples
+    """
+
+    def __init__(
+        self,
+        X_val: np.ndarray,
+        y_val_norm: np.ndarray,
+        energy_bins: np.ndarray,
+    ) -> None:
+        super().__init__()
+        self.X_val       = X_val
+        self.y_val_norm  = y_val_norm
+        self.energy_bins = energy_bins
+        # pre-compute bump mask from true a3 (normalized a3 > 0 means bump present)
+        self.bump_mask   = y_val_norm[:, 2] > 0.0
+        self.history: dict[str, list] = (
+            {f"mae_{n}": []      for n in PARAM_NAMES}
+            | {f"mae_{n}_bump": [] for n in PARAM_NAMES}
+            | {"spectrum_mse": [], "spectrum_rel_mse": [],
+               "coverage_1sigma": [], "coverage_1sigma_bump": []}
+        )
+
+    def on_epoch_end(self, epoch: int, logs: dict | None = None) -> None:
+        pff_out = self.model.predict(self.X_val, verbose=0, batch_size=256)
+        y_pred, sigma_pred = pff_mean_sigma(pff_out, PFF_PARAM_BOUNDS)
+        y_true = denormalize_pff_params(self.y_val_norm)
+        bmask  = self.bump_mask
+
+        for j, name in enumerate(PARAM_NAMES):
+            abs_err = np.abs(y_pred[:, j] - y_true[:, j])
+            self.history[f"mae_{name}"].append(float(abs_err.mean()))
+            if bmask.any():
+                self.history[f"mae_{name}_bump"].append(float(abs_err[bmask].mean()))
+            else:
+                self.history[f"mae_{name}_bump"].append(float("nan"))
+
+        z = (y_pred - y_true) / np.maximum(sigma_pred, 1e-6)
+        self.history["coverage_1sigma"].append(float(np.mean(np.abs(z[:, :3]) <= 1.0)))
+        self.history["coverage_1sigma_bump"].append(
+            float(np.mean(np.abs(z[bmask][:, 3:]) <= 1.0)) if bmask.any() else float("nan")
+        )
+
+        # Vectorised spectrum reconstruction (using the predicted mean)
+        s_true = _pff_batch(self.energy_bins, y_true)   # (N, M)
+        s_pred = _pff_batch(self.energy_bins, y_pred)
+        sq_err = (s_true - s_pred) ** 2
+        self.history["spectrum_mse"].append(float(sq_err.mean()))
+        # Relative MSE restricted to bump-region bins (E > 5 MeV) with floor=1.0
+        # avoids bremsstrahlung-tail zeros blowing up the denominator
+        bump_bins = self.energy_bins > 5.0
+        s_true_b  = s_true[:, bump_bins]
+        sq_err_b  = sq_err[:, bump_bins]
+        rel_sq    = sq_err_b / np.maximum(s_true_b, 1.0) ** 2
+        self.history["spectrum_rel_mse"].append(float(rel_sq.mean()))
+
+        # Expose spec_mse to Keras logs so EarlyStopping can monitor it
+        if logs is not None:
+            logs["spec_mse"] = self.history["spectrum_mse"][-1]
+
+        if (epoch + 1) % 10 == 0 and logs:
+            mae_all  = " | ".join(f"{n}={self.history[f'mae_{n}'][-1]:.3f}"      for n in PARAM_NAMES)
+            mae_bump = " | ".join(f"{n}={self.history[f'mae_{n}_bump'][-1]:.3f}" for n in PARAM_NAMES)
+            print(
+                f"  ep {epoch+1:3d} | val_loss {logs.get('val_loss', 0):.5f} | "
+                f"spec_mse {self.history['spectrum_mse'][-1]:.2f} | "
+                f"rel_mse {self.history['spectrum_rel_mse'][-1]:.4f} | "
+                f"1sig cov {self.history['coverage_1sigma'][-1]*100:.0f}% "
+                f"(bump {self.history['coverage_1sigma_bump'][-1]*100:.0f}%)\n"
+                f"           all : {mae_all}\n"
+                f"           bump: {mae_bump}"
+            )
+
+
+def _timed_generate(drm, n_samples, rng, bump_fraction):
+    """
+    generate_pff_training_data with split timing:
+      - sample_time : rejection-sampling loop (Python-dominated)
+      - numpy_time  : DRM matmul + noise (pure NumPy)
+    """
+    from src.core.data_utils import mev_bin_centers, sample_pff_spectra
+
+    energy_bins = mev_bin_centers(drm.shape[1])
+
+    t0 = time.perf_counter()
+    spectra, params = sample_pff_spectra(n_samples, energy_bins, rng, bump_fraction)
+    sample_time = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    responses = (drm @ spectra.T).T
+    sigma     = np.sqrt(np.maximum(responses, 1e-8))
+    noise     = rng.standard_normal(responses.shape) * sigma
+    X         = np.clip(responses + noise, 0.0, None)
+    # L1-normalise each response so training and inference live on the same
+    # scale regardless of the DRM's absolute units vs the real detector's raw
+    # units (see data_utils.generate_pff_training_data — this used to skip
+    # this step, which meant norm_mean/norm_std were fit on ~1e9-1e11-scale
+    # data while infer_pff.py feeds in L1-normalised real signals at ~1e-2,
+    # collapsing every real shot to nearly the same z-scored input).
+    row_sums  = X.sum(axis=1, keepdims=True)
+    X         = (X / np.maximum(row_sums, 1e-12)).astype(np.float32)
+    numpy_time = time.perf_counter() - t1
+
+    return X, params.astype(np.float32), sample_time, numpy_time
+
+
+if __name__ == "__main__":
+    t_start = time.perf_counter()
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    rng = np.random.default_rng(SEED)
+    drm = load_drm(XLSX_PATH)
+    print(f"DRM shape: {drm.shape}  min={drm.min():.3f}  max={drm.max():.3f}")
+
+    n_bump    = int(N_SAMPLES * BUMP_FRACTION)
+    n_no_bump = N_SAMPLES - n_bump
+    print(f"Generating {N_SAMPLES} samples ({n_bump} with bump, {n_no_bump} without)...")
+
+    X, y_params, t_sample, t_np = _timed_generate(drm, N_SAMPLES, rng, BUMP_FRACTION)
+    y_norm = normalize_pff_params(y_params)
+
+    print(f"  Sampling loop  : {t_sample:.2f}s")
+    print(f"  NumPy (DRM+noise): {t_np:.3f}s")
+    print(f"X shape: {X.shape}  y shape: {y_params.shape}")
+
+    X_train, X_val, y_train, y_val, yp_train, yp_val = train_test_split(
+        X, y_norm, y_params, test_size=0.2, random_state=SEED
+    )
+    mean, std  = normalize_fit(X_train)
+    X_train_n  = normalize_apply(X_train, mean, std)
+    X_val_n    = normalize_apply(X_val,   mean, std)
+
+    tf.random.set_seed(SEED)
+    model = build_model()
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=1.0),
+        loss=pff_nll_loss,
+    )
+    model.summary()
+
+    energy_bins = mev_bin_centers(drm.shape[1])
+    metrics_cb  = PFFMetricsCallback(X_val_n, y_val, energy_bins)
+    # EarlyStopping on val_loss — smooth signal for convergence detection.
+    # ModelCheckpoint on spec_mse — saves weights only when spectrum reconstruction
+    # improves, decoupling "when to stop" from "which weights to keep".
+    spec_ckpt  = tf.keras.callbacks.ModelCheckpoint(
+        MODEL_PATH, monitor="spec_mse", save_best_only=True,
+        mode="min", verbose=0,
+    )
+    early_stop  = tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=PATIENCE, restore_best_weights=False, verbose=1
+    )
+    reduce_lr   = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", factor=0.5, patience=15, min_lr=1e-5, verbose=0
+    )
+
+    t_train_start = time.perf_counter()
+    history = model.fit(
+        X_train_n, y_train,
+        validation_data=(X_val_n, y_val),
+        epochs=MAX_EPOCHS,
+        batch_size=BATCH_SIZE,
+        callbacks=[metrics_cb, spec_ckpt, early_stop, reduce_lr],
+        verbose=0,
+    )
+    t_train = time.perf_counter() - t_train_start
+
+    epochs_run = len(history.history["loss"])
+    best_ep    = int(np.argmin(metrics_cb.history["spectrum_mse"]))  # 0-indexed
+
+    print(f"\nStopped at epoch {epochs_run}  (best epoch: {best_ep + 1})")
+    print(f"Training wall time : {t_train:.1f}s  ({t_train/epochs_run:.2f}s/epoch)")
+    print(f"Best val_loss      : {history.history['val_loss'][best_ep]:.6f}")
+    print(f"Spectrum MSE       : {metrics_cb.history['spectrum_mse'][best_ep]:.4f}  (at best epoch)")
+    print(f"Spectrum rel-MSE   : {metrics_cb.history['spectrum_rel_mse'][best_ep]:.6f}  (bump region, E>5 MeV)")
+    print(f"{'Param':>4}  {'MAE (all)':>10}  {'MAE (bump only)':>15}  (at best epoch)")
+    for n in PARAM_NAMES:
+        print(f"  {n:>2}  {metrics_cb.history[f'mae_{n}'][best_ep]:>10.4f}  "
+              f"{metrics_cb.history[f'mae_{n}_bump'][best_ep]:>15.4f}")
+    print(f"1-sigma coverage   : a1/a2/a3={metrics_cb.history['coverage_1sigma'][best_ep]*100:.0f}% "
+          f"(want ~68%)  a4/a5(bump only)={metrics_cb.history['coverage_1sigma_bump'][best_ep]*100:.0f}%")
+
+    model.save(MODEL_PATH)
+
+    results = {
+        "epochs_trained":        epochs_run,
+        "best_epoch":            best_ep + 1,
+        "n_samples":             N_SAMPLES,
+        "bump_fraction":         BUMP_FRACTION,
+        "learning_rate":         LEARNING_RATE,
+        "param_bounds":          PFF_PARAM_BOUNDS.tolist(),
+        "param_names":           PARAM_NAMES,
+        "train_loss":            [float(v) for v in history.history["loss"]],
+        "val_loss":              [float(v) for v in history.history["val_loss"]],
+        "best_val_loss":         float(history.history["val_loss"][best_ep]),
+        "spectrum_mse":          metrics_cb.history["spectrum_mse"],
+        "spectrum_rel_mse":      metrics_cb.history["spectrum_rel_mse"],
+        "best_spectrum_mse":     metrics_cb.history["spectrum_mse"][best_ep],
+        "best_spectrum_rel_mse": metrics_cb.history["spectrum_rel_mse"][best_ep],
+        "coverage_1sigma":       metrics_cb.history["coverage_1sigma"],
+        "coverage_1sigma_bump":  metrics_cb.history["coverage_1sigma_bump"],
+        "best_coverage_1sigma":       metrics_cb.history["coverage_1sigma"][best_ep],
+        "best_coverage_1sigma_bump":  metrics_cb.history["coverage_1sigma_bump"][best_ep],
+        "norm_mean":             mean.tolist(),
+        "norm_std":              std.tolist(),
+        **{f"mae_{n}":           metrics_cb.history[f"mae_{n}"]      for n in PARAM_NAMES},
+        **{f"mae_{n}_bump":      metrics_cb.history[f"mae_{n}_bump"] for n in PARAM_NAMES},
+        **{f"best_mae_{n}":      metrics_cb.history[f"mae_{n}"][best_ep]      for n in PARAM_NAMES},
+        **{f"best_mae_{n}_bump": metrics_cb.history[f"mae_{n}_bump"][best_ep] for n in PARAM_NAMES},
+    }
+    with open(RESULTS_JSON, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"Saved {MODEL_PATH} and {RESULTS_JSON}")
+
+    t_total = time.perf_counter() - t_start
+    print(f"\n--- Timing summary ---")
+    print(f"  Sampling loop     : {t_sample:.2f}s")
+    print(f"  NumPy (DRM+noise) : {t_np:.3f}s")
+    print(f"  TF init + compile : (included in training time)")
+    print(f"  Training          : {t_train:.1f}s  ({epochs_run} epochs, {t_train/epochs_run:.2f}s/epoch)")
+    print(f"  Total wall time   : {t_total:.1f}s")
