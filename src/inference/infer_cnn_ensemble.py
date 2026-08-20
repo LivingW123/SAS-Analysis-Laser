@@ -61,6 +61,7 @@ MODEL_PREFIX = os.environ.get("CNN_MODEL_PREFIX", "model_cnn")
 OUT_DIR      = os.environ.get("CNN_OUT_DIR", "out/inference/cnn_infer_ensemble")
 
 PFF_DIR      = "out/training/pff"
+PFF_TAG      = os.environ.get("PFF_ENSEMBLE_TAG", "")  # e.g. "_oldprior" to load model_pff_ensemble_oldprior_{idx}.keras
 N_MEMBERS    = 5
 PARAM_NAMES  = ["a1", "a2", "a3", "a4", "a5", "a6"]
 N_MC_DRAWS   = 500
@@ -103,8 +104,8 @@ def predict(model, x_norm: np.ndarray, as_2d: bool) -> np.ndarray:
 def load_ensemble() -> list[dict]:
     members = []
     for idx in range(N_MEMBERS):
-        model_path = os.path.join(PFF_DIR, f"model_pff_ensemble_{idx}.keras")
-        json_path = os.path.join(PFF_DIR, f"pff_training_results_ensemble_{idx}.json")
+        model_path = os.path.join(PFF_DIR, f"model_pff_ensemble{PFF_TAG}_{idx}.keras")
+        json_path = os.path.join(PFF_DIR, f"pff_training_results_ensemble{PFF_TAG}_{idx}.json")
         with open(json_path) as f:
             res = json.load(f)
         members.append({
