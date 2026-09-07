@@ -4,6 +4,32 @@ Working notes that don't belong in `README.md` (which documents usage/pipelines 
 humans) — investigation findings, known caveats, and operational gotchas specific to
 this repo. Read this before touching the PFF regressor or CNN spectrum classifier.
 
+## The TSVD baseline is now callable from Python — and so is every other method
+
+`src/core/tsvd.py` is a faithful port of `matlab/TSVD_NN.m`, and
+`src/core/estimators.py` wraps it, the CNN, both dense models and the PFF ensemble behind
+one `__call__(signal, sat_mask) -> Prediction` interface that
+`src/comparisons/method_comparison.py` scores everything through. Add new estimators
+there rather than writing another one-off comparison script.
+
+Two gotchas the MATLAB hides, both preserved in the port:
+
+- The reference computes its `lsqcurvefit` start point `c0` from `result` on line 57
+  while `result` is still `zeros` — the TSVD loop that fills it runs afterwards, on line
+  63. So the reference genuinely starts from the zero vector. `c0="tsvd"` is the warm
+  start it looks like it intended; both converge to the same place on this DRM.
+- The divisor for singular term 7 is clamped to `s6` (`constraint = S(6,6)`), a
+  hand-rolled damping without which the noisiest retained direction dominates.
+
+Validated: TSVD lands within 0.1-2% relative of the NNLS floor on all 14 real shots, so
+it really does fit the measurement about as well as any non-negative spectrum can. What
+it does NOT do is return a physical spectrum — with 7 degrees of freedom, no smoothness
+prior and a non-negativity clip, its answers occupy a median of 1.9 effective bins out of
+50 on real shots, and shot 10084_ch collapses to a single bin at 49.75 MeV. On the
+synthetic suites it reaches a *lower* reconstruction residual than the true spectrum
+itself does (29.9% vs 30.8% in-prior), which is the cleanest available demonstration that
+"best fit to the measured vector" and "right answer" are different objectives here.
+
 ## Repo layout: src/ + out/, scripts run as modules
 
 The repo was reorganized from ~26 flat root-level scripts into `src/core/`,

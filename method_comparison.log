@@ -1,0 +1,70 @@
+C:\Users\oneal\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\keras\src\export\tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "object"):
+Loading DRM and estimators...
+  methods: CNN n50, DNN spectrum n20, DNN classifier n50, PFF ensemble, TSVD_NN
+
+=== suite 'synthetic-inprior': 300 shots x 5 methods ===
+WARNING:tensorflow:5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000002BF8D70CA40> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+WARNING:tensorflow:6 out of the last 6 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x000002BF8D70F060> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+  25/300 shots done
+  50/300 shots done
+  75/300 shots done
+  100/300 shots done
+  125/300 shots done
+  150/300 shots done
+  175/300 shots done
+  200/300 shots done
+  225/300 shots done
+  250/300 shots done
+  275/300 shots done
+  300/300 shots done
+  saved out/comparisons/method_comparison\accuracy_synthetic-inprior.png
+  saved out/comparisons/method_comparison\fit_vs_truth_synthetic-inprior.png
+  saved out/comparisons/method_comparison\examples_synthetic-inprior.png
+
+=== suite 'synthetic-offprior': 300 shots x 5 methods ===
+  25/300 shots done
+  50/300 shots done
+  75/300 shots done
+  100/300 shots done
+  125/300 shots done
+  150/300 shots done
+  175/300 shots done
+  200/300 shots done
+  225/300 shots done
+  250/300 shots done
+  275/300 shots done
+  300/300 shots done
+  saved out/comparisons/method_comparison\accuracy_synthetic-offprior.png
+  saved out/comparisons/method_comparison\fit_vs_truth_synthetic-offprior.png
+  saved out/comparisons/method_comparison\examples_synthetic-offprior.png
+
+=== suite 'real': 14 shots x 5 methods ===
+  14/14 shots done
+  saved out/comparisons/method_comparison\real_spectra.png
+  saved out/comparisons/method_comparison\real_residuals.png
+  saved out/comparisons/method_comparison\tsvd_diagnostics.png
+  saved out/comparisons/method_comparison\real_agreement.png
+  saved out/comparisons/method_comparison\prior_dependence.png
+
+=== median metrics by suite and method ===
+             suite             method  wasserstein_mev  total_variation  log_rms  hi10_frac_err  resid_pct  resid_unsat_pct  n_eff_bins  seconds  a4_err  n_dof  n_shots a4_1sig_coverage
+              real            CNN n50              NaN              NaN      NaN            NaN     32.807           32.665      11.667    0.050     NaN 50.000       14              NaN
+              real DNN classifier n50              NaN              NaN      NaN            NaN     49.001           50.780       1.000    0.047     NaN 50.000       14              NaN
+              real   DNN spectrum n20              NaN              NaN      NaN            NaN     48.483           50.866       2.778    0.047     NaN 20.000       14              NaN
+              real       PFF ensemble              NaN              NaN      NaN            NaN     33.799           33.799      13.663    0.236     NaN  6.000       14              NaN
+              real            TSVD_NN              NaN              NaN      NaN            NaN     30.045           30.045       1.946    0.006     NaN  7.000       14              NaN
+ synthetic-inprior            CNN n50            1.152            0.106    0.940          0.034     30.363           30.363       9.026    0.145     NaN 50.000      300              NaN
+ synthetic-inprior DNN classifier n50            3.306            0.826    3.275          0.121     38.531           38.531       1.000    0.144     NaN 50.000      300              NaN
+ synthetic-inprior   DNN spectrum n20            3.087            0.486    3.060          0.122     42.759           42.759       2.778    0.143     NaN 20.000      300              NaN
+ synthetic-inprior       PFF ensemble            0.753            0.082    0.459          0.031     31.251           31.251       7.326    0.736   2.025  6.000      300            0.753
+ synthetic-inprior            TSVD_NN            2.239            0.437    2.659          0.049     29.895           29.895       4.583    0.029     NaN  7.000      300              NaN
+ synthetic-inprior  truth (reference)            0.000            0.000    0.000          0.000     30.758           30.758       7.879    0.000     NaN  6.000      300              NaN
+synthetic-offprior            CNN n50            1.621            0.133    1.004          0.044     30.833           30.833       9.338    0.142     NaN 50.000      300              NaN
+synthetic-offprior DNN classifier n50            4.347            0.849    3.275          0.159     40.432           40.432       1.000    0.145     NaN 50.000      300              NaN
+synthetic-offprior   DNN spectrum n20            4.257            0.591    3.077          0.163     44.830           44.830       2.778    0.139     NaN 20.000      300              NaN
+synthetic-offprior       PFF ensemble            1.282            0.109    0.597          0.038     31.793           31.793       8.056    0.720   9.354  6.000      300            0.237
+synthetic-offprior            TSVD_NN            2.696            0.485    2.715          0.056     30.167           30.167       4.069    0.026     NaN  7.000      300              NaN
+synthetic-offprior  truth (reference)            0.000            0.000    0.000          0.000     31.077           31.077       8.735    0.000     NaN  6.000      300              NaN
+
+Wrote CSVs + figures to out/comparisons/method_comparison/  (711s)

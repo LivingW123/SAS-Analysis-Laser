@@ -13,14 +13,16 @@ Code lives under `src/`, generated artifacts (models, results, figures) under `o
 ```
 src/
   core/            data_utils.py + shared model/decode definitions (cnn_model.py, pff_model.py,
-                   pff_ensemble_utils.py, real_shots.py) used across training/inference/comparisons/optimizers
+                   pff_ensemble_utils.py, real_shots.py) used across training/inference/comparisons/optimizers,
+                   plus tsvd.py (the classical unfolding baseline) and estimators.py, the
+                   uniform interface every method is scored through
   training/
     dnn/           plain dense (fully-connected) models: train_dnn_mev.py, train_dnn_spectrum.py
     cnn/           Conv2D-based spectrum regressor: train_cnn.py + chunked variants
     pff/           PFF parameter regressor generations, see its own section below
   inference/       infer_cnn_ensemble.py, infer_spectrum.py
   comparisons/     evaluate_pff_ensemble.py, peak_table.py, cnn_real_shot_examples.py,
-                   pff_domain_gap_check.py, nnls_refine.py
+                   pff_domain_gap_check.py, nnls_refine.py, method_comparison.py
   optimizers/      refine_bump_center_optimizer.py, bump_center_profile_likelihood.py,
                    noise_sweep.py, noise_sweep_multiseed.py
   visualization/   visualize_mev.py
@@ -46,6 +48,9 @@ a permanent record (several are cited directly in `CLAUDE.md` and in this README
 | File                 | Purpose                                                                    |
 | -------------------- | -------------------------------------------------------------------------- |
 | `src/core/data_utils.py`    | DRM loading, energy binning, synthetic spectrum/noise/saturation generation, normalization |
+| `src/core/tsvd.py`   | Python port of `TSVD_NN.m` — the classical truncated-SVD unfolding baseline |
+| `src/core/estimators.py` | Uniform `signal -> spectrum` interface over every method, used by the comparison |
+| `src/comparisons/method_comparison.py` | Scores all methods against each other and against TSVD |
 | `src/training/dnn/train_dnn_mev.py`     | TensorFlow FC classifier training for n = 10, 20, 50, 100, 200 bins        |
 | `src/visualization/visualize_mev.py` | All matplotlib figures                                                     |
 | `src/training/cnn/train_cnn.py`     | CNN spectrum-regression training (in-memory), see below                    |
@@ -259,3 +264,88 @@ survives on disk (`out/training/pff/`):
   verification script above, with a 4th panel driven by the PFF ensemble (mean ± total sigma,
   aleatoric/epistemic split, `p(bump)` ± its cross-member std). Writes to
   `out/inference/cnn_infer_ensemble/`.
+
+
+## Method comparison — every model vs the classical TSVD baseline
+
+`src/comparisons/method_comparison.py` scores the DNN classifier, the DNN spectrum
+regressor, the CNN spectrum regressor, the PFF ensemble and the classical TSVD unfolding on one common footing: same 200-channel input, same
+L1-normalised spectrum output, exactly re-binned to a common 50-bin 0-50 MeV grid
+(`src/core/estimators.py`). Run it with
+
+```bash
+python -m src.comparisons.method_comparison               # the three suites below
+python -m src.comparisons.method_comparison --suites real  # real shots only
+```
+
+Outputs land in `out/comparisons/method_comparison/` (per-suite metric CSVs,
+`summary_medians.csv`, and the figures named below).
+
+### The TSVD baseline is now runnable from Python
+
+`src/core/tsvd.py` ports `matlab/TSVD_NN.m`: group the DRM's energy bins in pairs, take
+its SVD, keep 7 singular directions (with the reference's own clamp of the 7th divisor to
+s6), then refit those 7 coefficients so the non-negativity-clipped spectrum best
+reproduces the measured vector. Validated against the NNLS floor — the best residual any
+non-negative spectrum can achieve — on all 14 real shots, where it lands within 0.1-2%
+relative of that floor on every one. So the port is doing what it should: TSVD really
+does fit the measurement about as well as anything possibly can.
+
+### Three suites, because no one of them settles it
+
+| Suite | Truth | What it answers |
+| --- | --- | --- |
+| `synthetic-inprior` | known | accuracy on the nets' home turf — the same generator they trained on |
+| `synthetic-offprior` | known | accuracy when the bump centre is drawn uniformly over 5-45 MeV, outside the trained [10,20] MeV window; the difference from `inprior` is how much of a method's accuracy was the prior |
+| `real` | none | the 14 real shots — only self-consistency measures exist, so this is where the methods are allowed to disagree and nothing arbitrates |
+
+### Headline results (300 synthetic shots per suite)
+
+Median over shots; earth-mover distance to truth in MeV is the accuracy number,
+reconstruction residual is the fit-to-measurement number.
+
+| Method | dof | EMD in-prior | EMD off-prior | resid, real shots | eff. bins, real | s/shot |
+| --- | --- | --- | --- | --- | --- | --- |
+| PFF ensemble | 6 | **0.75** | 1.28 | 33.8% | 13.7 | 0.23 |
+| CNN n50 | 50 | 1.15 | **1.62** | 32.8% | 11.7 | 0.05 |
+| TSVD_NN | 7 | 2.24 | 2.70 | **30.0%** | 1.9 | **0.007** |
+| DNN spectrum n20 | 20 | 3.09 | 4.26 | 48.5% | 2.8 | 0.05 |
+| DNN classifier n50 | 50 | 3.31 | 4.35 | 49.0% | 1.0 | 0.04 |
+
+Three things fall out of that table, and each has a figure:
+
+- **Fitting the data best and being right are different things**
+  (`fit_vs_truth_*.png`, `accuracy_*.png`). TSVD gets the lowest reconstruction residual
+  of any method on both synthetic suites and on the real shots — and is 3x worse than the
+  PFF ensemble at recovering the actual spectrum. The scoring includes the true spectrum
+  itself as a reference row: on the in-prior suite the truth scores 30.8% residual while
+  TSVD scores 29.9%, i.e. TSVD fits the measurement *better than the correct answer does*,
+  which is the definition of fitting noise. With 7 degrees of freedom and no smoothness
+  prior it spends them on spikes: its answers occupy a median of 1.9 effective bins out of
+  50 on real shots (`tsvd_diagnostics.png`), and on shot 10084_ch it collapses to a single
+  bin at 49.75 MeV.
+- **The DNN family is not competitive on real shots.** Both dense models sit near 49%
+  reconstruction residual where the CNN and PFF ensemble are near 33%. The classifier's
+  failure is structural rather than a training problem — it was trained on monoenergetic
+  responses, so its softmax collapses to a single bin (1.0 effective bins) on every
+  broad-spectrum input.
+- **The PFF ensemble's edge is partly its prior** (`prior_dependence.png`). It wins the
+  in-prior suite outright, but moving the bump centre outside the trained window costs it
+  more than any other method: median `a4` error 2.03 -> 9.35 MeV over bump-present shots,
+  and its own 1-sigma interval covers the truth 75% of the time in-prior but only 24%
+  off-prior. The CNN
+  degrades far more gracefully (1.15 -> 1.62 MeV EMD), and TSVD, having no prior to be
+  wrong about, degrades least in relative terms.
+
+### Figures
+
+| Figure | Shows |
+| --- | --- |
+| `accuracy_synthetic-{in,off}prior.png` | per-method distributions of the four accuracy metrics, with the true spectrum's own residual marked |
+| `fit_vs_truth_synthetic-{in,off}prior.png` | residual vs truth-error, facetted per method — the central tradeoff |
+| `examples_synthetic-*.png` | representative shots: every method's spectrum against truth, and its detector-space fit |
+| `prior_dependence.png` | in-prior vs off-prior accuracy, residual, and `a4` error/coverage side by side |
+| `real_spectra.png` | all 14 real shots, every method overlaid — the disagreement, undecidable without truth |
+| `real_residuals.png` | per-shot reconstruction residual by method against the NNLS floor |
+| `real_agreement.png` | pairwise median disagreement between methods, in MeV |
+| `tsvd_diagnostics.png` | the DRM singular spectrum and truncation, spikiness by method, TSVD output on real shots |
